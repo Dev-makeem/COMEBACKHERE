@@ -43,3 +43,14 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test -- --run
+
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@a8a3f3ad30e987fea8aa2a54bccb630c0d519b66 # v4.7.0
+        with:
+          name: coverage-summary
+          path: comebackhere-frontend/coverage
+          retention-days: 7
