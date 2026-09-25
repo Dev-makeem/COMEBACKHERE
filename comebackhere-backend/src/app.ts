@@ -13,6 +13,8 @@ import { startComplianceIndexer } from "./services/compliance-indexer.js"
 import { rateLimitMiddleware } from "./middleware/rateLimiter.js"
 import { correlationIdMiddleware } from "./middleware/correlationId.js"
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js"
+import { createCorsMiddleware } from "./middleware/cors.js"
+import { parseCorsOrigins } from "./lib/env.js"
 import { openapiSpec } from "./openapi.js"
 
 /** Maximum accepted JSON body size; larger requests get a 413 envelope. */
@@ -50,7 +52,13 @@ const swaggerHelmet = helmet({
   },
 })
 
-export function createApp() {
+export interface CreateAppOptions {
+  /** Origins allowed to call the API cross-origin. Defaults to CORS_ORIGINS. */
+  corsOrigins?: readonly string[]
+}
+
+export function createApp(options: CreateAppOptions = {}) {
+  const corsOrigins = options.corsOrigins ?? parseCorsOrigins()
   const app = express()
   app.disable("x-powered-by")
   // Attach / propagate X-Request-Id before any other middleware so every log
@@ -62,6 +70,9 @@ export function createApp() {
       ? swaggerHelmet(req, res, next)
       : apiHelmet(req, res, next),
   )
+  // CORS runs before body parsing and rate limiting so preflights are cheap
+  // and disallowed origins are rejected before any work is done.
+  app.use(createCorsMiddleware(corsOrigins))
   app.use(express.json({ limit: JSON_BODY_LIMIT }))
   app.use(rateLimitMiddleware)
 

@@ -6,6 +6,14 @@ All request bodies are JSON (`Content-Type: application/json`) and are limited
 to **100 kB**; larger bodies are rejected with `413 PAYLOAD_TOO_LARGE`.
 All responses are JSON.
 
+**CORS:** browsers may call the API only from origins listed in
+`CORS_ORIGINS`. Requests from any other origin, including preflights, get
+`403 CORS_ORIGIN_NOT_ALLOWED`. Preflight allows the `Content-Type`,
+`Authorization`, `Idempotency-Key`, `X-Request-Id` and `X-Admin-Key` request
+headers, and exposes `X-Request-Id`, `Retry-After` and the `X-RateLimit-*`
+response headers. Requests with no `Origin` header (server-to-server, curl)
+are unaffected.
+
 Every response carries a baseline of security headers (via
 [helmet](https://helmetjs.github.io/)), including `Strict-Transport-Security`,
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a strict
@@ -692,6 +700,7 @@ header and `correlationId`. Otherwise the server generates a UUID v4.
 | 400  | `INVALID_JSON`          | Request body is not valid JSON                                   | `null`                                 |
 | 401  | `UNAUTHORIZED`          | Missing or invalid `x-admin-key`                                 | `null`                                 |
 | 403  | `FORBIDDEN`             | Caller lacks permission                                          | `null`                                 |
+| 403  | `CORS_ORIGIN_NOT_ALLOWED` | Browser `Origin` is not in `CORS_ORIGINS`                      | `{ origin }`                           |
 | 404  | `NOT_FOUND`             | Resource or route does not exist                                 | `null`                                 |
 | 409  | `CONFLICT`              | Request conflicts with current state (e.g. dispute already resolved) | Endpoint-specific, e.g. `{ outcome }` |
 | 413  | `PAYLOAD_TOO_LARGE`     | JSON body exceeds 100 kB                                         | `{ limitBytes }`                       |
@@ -725,3 +734,4 @@ handlers are wrapped in `asyncHandler` so rejected promises reach it.
 | `WEBHOOK_URL`          | Merchant webhook endpoint URL                             |
 | `WEBHOOK_SIGNING_SECRET` | HMAC-SHA256 signing secret for outbound webhooks        |
 | `PORT`                 | HTTP server port (default `3000`)                         |
+| `CORS_ORIGINS`         | Comma-separated allowlist of browser origins, e.g. `http://localhost:5173,https://app.example.com`. Bare origins only (no path, trailing slash or `*`); invalid entries fail startup. Unset = no cross-origin access. |
