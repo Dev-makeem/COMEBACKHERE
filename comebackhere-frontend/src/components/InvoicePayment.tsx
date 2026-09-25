@@ -11,7 +11,7 @@ import { formatAmount, USDC_DECIMALS } from "../utils/format"
 
 export function InvoicePayment() {
   const { invoice, loading, error, loadInvoice, pay, cancel } = useInvoice()
-  const { address, connected, connecting, connect } = useWallet()
+  const { address, connected, connecting, connect, notReadyReason } = useWallet()
   const [invoiceId, setInvoiceId] = useState("")
   const [showConfirm, setShowConfirm] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -237,15 +237,32 @@ export function InvoicePayment() {
             )}
 
             {connected && canPay && (
-              <button className="btn btn--primary" onClick={handlePayClick} aria-label={`Pay invoice #${invoice.id}`}>
+              <button
+                className="btn btn--primary"
+                onClick={handlePayClick}
+                disabled={!!notReadyReason}
+                aria-describedby={notReadyReason ? "payment-wallet-reason" : undefined}
+                aria-label={`Pay invoice #${invoice.id}`}
+              >
                 Pay Invoice
               </button>
             )}
 
             {canCancel && (
-              <button className="btn btn--danger" onClick={handleCancelClick}>
+              <button
+                className="btn btn--danger"
+                onClick={handleCancelClick}
+                disabled={!!notReadyReason}
+                aria-describedby={notReadyReason ? "payment-wallet-reason" : undefined}
+              >
                 Cancel Invoice
               </button>
+            )}
+
+            {notReadyReason && (
+              <p id="payment-wallet-reason" className="wallet-required" data-testid="wallet-not-ready">
+                {notReadyReason}
+              </p>
             )}
 
             {connected && invoice.status !== "Pending" && !hasOpenDispute && (

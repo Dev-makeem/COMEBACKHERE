@@ -9,6 +9,7 @@ import SignerManagement from "./components/SignerManagement/SignerManagement"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
+import { useHashTab, TABS, type Tab } from "./hooks/useHashTab"
 import { CopyableText } from "./components/CopyableText"
 import { formatAmount, USDC_DECIMALS } from "./utils/format"
 import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
@@ -20,7 +21,7 @@ type Tab = "payment" | "refund" | "compliance" | "tokens" | "batch-expire" | "tr
 
 function RefundTab() {
   const { invoice, loading, error, loadInvoice, refund } = useInvoice()
-  const { address } = useWallet()
+  const { address, notReadyReason } = useWallet()
   const [invoiceId, setInvoiceId] = useState("")
 
   const handleLoadInvoice = async () => {
@@ -83,6 +84,7 @@ function RefundTab() {
           <RefundRequest
             invoice={invoice}
             walletAddress={address}
+            walletNotReadyReason={notReadyReason}
             onRequestRefund={() => refund(address ?? "")}
           />
         </div>
@@ -91,16 +93,63 @@ function RefundTab() {
   )
 }
 
+interface TabContext {
+  address: string | null
+  notReadyReason: string | null
+  setTab: (tab: Tab) => void
+  openInvoice: (invoiceId: string) => void
+}
+
+function renderTab(tab: Tab, { address, notReadyReason, setTab, openInvoice }: TabContext) {
+  switch (tab) {
+    case "payment":
+      return <InvoicePayment />
+    case "create":
+      return <CreateInvoice merchantAddress={address} />
+    case "invoices":
+      return (
+        <InvoiceList
+          merchantAddress={address}
+          onOpenInvoice={openInvoice}
+          onCreateInvoice={() => setTab("create")}
+        />
+      )
+    case "refund":
+      return <RefundTab />
+    case "tokens":
+      return <TokenAllowlist />
+    case "compliance":
+      return <ComplianceManager />
+    case "batch-expire":
+      return <BatchExpireInvoices walletAddress={address} walletNotReadyReason={notReadyReason} />
+    case "treasury":
+      return <TreasuryManager />
+    default: {
+      const unreachable: never = tab
+      return unreachable
+    }
+  }
+}
+
 export default function App() {
   const { address, network, connected, connect, connecting, disconnect, error: walletError } = useWallet()
   const { showWizard, openWizard, closeWizard } = useOnboarding()
   useTheme()
-  const [tab, setTab] = useState<Tab>("payment")
+  const [tab, setTab] = useHashTab()
 
   const handleDisconnect = useCallback(() => {
     disconnect()
     setTab("payment")
-  }, [disconnect])
+  }, [disconnect, setTab])
+
+  // Open an invoice from the list in the payment tab. InvoicePayment loads
+  // ?invoiceId= on mount, so the resulting URL is also shareable.
+  const openInvoice = useCallback((invoiceId: string) => {
+    const url = new URL(window.location.href)
+    url.searchParams.set("invoiceId", invoiceId)
+    window.history.replaceState(window.history.state, "", url)
+    setTab("payment")
+  }, [setTab])
 
   return (
     <div className="app">
