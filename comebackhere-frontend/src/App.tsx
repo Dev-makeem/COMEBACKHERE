@@ -10,6 +10,9 @@ import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { CopyableText } from "./components/CopyableText"
+import { formatAmount, USDC_DECIMALS } from "./utils/format"
+import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
+import OnboardingWizard, { useOnboarding } from "./components/OnboardingWizard"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
@@ -57,8 +60,8 @@ function RefundTab() {
           </div>
           <div className="invoice-card__body">
             <div className="detail-row">
-              <span className="detail-label">Amount (USDC)</span>
-              <span className="detail-value">{invoice.gross_usdc}</span>
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(invoice.gross_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Merchant</span>
@@ -89,7 +92,8 @@ function RefundTab() {
 }
 
 export default function App() {
-  const { address, connected, connect, connecting, disconnect } = useWallet()
+  const { address, network, connected, connect, connecting, disconnect, error: walletError } = useWallet()
+  const { showWizard, openWizard, closeWizard } = useOnboarding()
   useTheme()
   const [tab, setTab] = useState<Tab>("payment")
 
@@ -103,6 +107,13 @@ export default function App() {
       <header className="app-header" role="banner">
         <h1>ComebackHere</h1>
         <div className="wallet-bar">
+          <button
+            className="btn btn--secondary btn--sm"
+            onClick={openWizard}
+            aria-label="Open setup guide"
+          >
+            Setup guide
+          </button>
           {connected ? (
             <>
               <span className="wallet-address" aria-label={`Wallet connected: ${address}`}>
@@ -128,6 +139,12 @@ export default function App() {
           )}
         </div>
       </header>
+
+      <NetworkMismatchBanner
+        walletPassphrase={network}
+        connected={connected}
+        connecting={connecting}
+      />
 
       <nav className="tabs" role="tablist" aria-label="Main navigation">
         <button
@@ -221,6 +238,16 @@ export default function App() {
           <SignerManagement />
         ) : null}
       </main>
+
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={closeWizard}
+          onDismiss={closeWizard}
+          walletAddress={address}
+          walletError={walletError}
+          onConnectWallet={connect}
+        />
+      )}
     </div>
   )
 }

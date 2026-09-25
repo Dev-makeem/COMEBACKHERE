@@ -434,7 +434,7 @@ export function TreasuryManager() {
               balances.map((b) => (
                 <tr key={b.token}>
                   <td>{b.token}</td>
-                  <td>{(Number(b.balance) / 10_000_000).toFixed(7)}</td>
+                  <td>{formatAmount(b.balance, STELLAR_DECIMALS, b.token)}</td>
                 </tr>
               ))
             )}
