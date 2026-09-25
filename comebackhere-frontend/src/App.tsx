@@ -5,6 +5,7 @@ import { ComplianceManager } from "./components/ComplianceManager"
 import { TokenAllowlist } from "./components/TokenAllowlist"
 import { BatchExpireInvoices } from "./components/BatchExpireInvoices"
 import { TreasuryManager } from "./components/TreasuryManager"
+import SignerManagement from "./components/SignerManagement/SignerManagement"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
@@ -15,7 +16,7 @@ import OnboardingWizard, { useOnboarding } from "./components/OnboardingWizard"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
-type Tab = "payment" | "refund" | "compliance" | "tokens" | "batch-expire" | "treasury"
+type Tab = "payment" | "refund" | "compliance" | "tokens" | "batch-expire" | "treasury" | "signers"
 
 function RefundTab() {
   const { invoice, loading, error, loadInvoice, refund } = useInvoice()
@@ -206,6 +207,18 @@ export default function App() {
         >
           Treasury
         </button>
+        {connected && (
+          <button
+            role="tab"
+            aria-selected={tab === "signers"}
+            aria-controls="tabpanel-signers"
+            id="tab-signers"
+            className={`tab ${tab === "signers" ? "tab--active" : ""}`}
+            onClick={() => setTab("signers")}
+          >
+            Signers
+          </button>
+        )}
       </nav>
 
       <main className="app-main">
@@ -221,6 +234,8 @@ export default function App() {
           <BatchExpireInvoices walletAddress={address} />
         ) : tab === "treasury" ? (
           <TreasuryManager />
+        ) : tab === "signers" && connected ? (
+          <SignerManagement />
         ) : null}
       </main>
 

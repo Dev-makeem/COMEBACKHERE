@@ -44,12 +44,15 @@ Thumbs.db
 
 # Vite cache
 .vite/
+**/.vite/
 .vite-inspect/
 
 # Vitest / Jest output
 vitest-report/
 html/
 lcov.info
+vitest-coverage/
+**/.vitest-cache/
 
 # Lock files — not committed (each sub-package manages its own lock locally)
 package-lock.json
@@ -76,3 +79,11 @@ vitest.config.ts.timestamp-*
 *.swp
 *.swo
 *~
+
+# Coverage reports
+comebackhere-frontend/coverage/
+frontend/coverage/
+comebackhere-backend/coverage/
+
+# Playwright state
+playwright/.auth/
