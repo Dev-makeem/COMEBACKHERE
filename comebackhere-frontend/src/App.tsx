@@ -5,6 +5,7 @@ import { ComplianceManager } from "./components/ComplianceManager"
 import { TokenAllowlist } from "./components/TokenAllowlist"
 import { BatchExpireInvoices } from "./components/BatchExpireInvoices"
 import { TreasuryManager } from "./components/TreasuryManager"
+import { CreateInvoice } from "./components/CreateInvoice"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
@@ -15,6 +16,7 @@ import "./components/ErrorBoundary.css"
 
 const TAB_LABELS: Record<Tab, string> = {
   payment: "Pay Invoice",
+  create: "Create Invoice",
   refund: "Request Refund",
   compliance: "Compliance",
   tokens: "Token Allowlist",
@@ -99,6 +101,8 @@ function renderTab(tab: Tab, address: string | null) {
   switch (tab) {
     case "payment":
       return <InvoicePayment />
+    case "create":
+      return <CreateInvoice merchantAddress={address} />
     case "refund":
       return <RefundTab />
     case "tokens":

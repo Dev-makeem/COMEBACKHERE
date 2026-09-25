@@ -930,6 +930,93 @@ h3 {
   text-align: right;
 }
 
+/* Shared form fields */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.form-field__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.form-field__input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-field__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.form-field__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-field__input--error {
+  border-color: var(--color-danger);
+}
+
+.form-field__input--error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
+.form-field__hint {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.form-field__error {
+  font-size: 0.85rem;
+  color: var(--color-danger);
+}
+
+/* Create invoice */
+.create-invoice {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.create-invoice h2 {
+  margin-bottom: 0;
+}
+
+.create-invoice__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-invoice__row {
+  display: flex;
+  gap: 16px;
+}
+
+.create-invoice__form .btn {
+  align-self: flex-start;
+}
+
+.create-invoice > .btn {
+  align-self: flex-start;
+}
+
 @media (max-width: 640px) {
   .app-header,
   .header-actions {
@@ -937,8 +1024,13 @@ h3 {
     flex-direction: column;
   }
 
-  .qr-code-section__actions {
+  .qr-code-section__actions,
+  .create-invoice__row {
     flex-direction: column;
+  }
+
+  .create-invoice__form .btn {
+    align-self: stretch;
   }
 
   .qr-code-section__download,
