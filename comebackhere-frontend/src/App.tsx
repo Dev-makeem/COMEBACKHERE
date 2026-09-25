@@ -8,11 +8,19 @@ import { TreasuryManager } from "./components/TreasuryManager"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
+import { useHashTab, TABS, type Tab } from "./hooks/useHashTab"
 import { CopyableText } from "./components/CopyableText"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
-type Tab = "payment" | "refund" | "compliance" | "tokens" | "batch-expire" | "treasury"
+const TAB_LABELS: Record<Tab, string> = {
+  payment: "Pay Invoice",
+  refund: "Request Refund",
+  compliance: "Compliance",
+  tokens: "Token Allowlist",
+  "batch-expire": "Batch Expire",
+  treasury: "Treasury",
+}
 
 function RefundTab() {
   const { invoice, loading, error, loadInvoice, refund } = useInvoice()
@@ -87,15 +95,36 @@ function RefundTab() {
   )
 }
 
+function renderTab(tab: Tab, address: string | null) {
+  switch (tab) {
+    case "payment":
+      return <InvoicePayment />
+    case "refund":
+      return <RefundTab />
+    case "tokens":
+      return <TokenAllowlist />
+    case "compliance":
+      return <ComplianceManager />
+    case "batch-expire":
+      return <BatchExpireInvoices walletAddress={address} />
+    case "treasury":
+      return <TreasuryManager />
+    default: {
+      const unreachable: never = tab
+      return unreachable
+    }
+  }
+}
+
 export default function App() {
   const { address, connected, connect, connecting, disconnect } = useWallet()
   useTheme()
-  const [tab, setTab] = useState<Tab>("payment")
+  const [tab, setTab] = useHashTab()
 
   const handleDisconnect = useCallback(() => {
     disconnect()
     setTab("payment")
-  }, [disconnect])
+  }, [disconnect, setTab])
 
   return (
     <div className="app">
@@ -129,82 +158,28 @@ export default function App() {
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Main navigation">
-        <button
-          role="tab"
-          aria-selected={tab === "payment"}
-          aria-controls="tabpanel-payment"
-          id="tab-payment"
-          className={`tab ${tab === "payment" ? "tab--active" : ""}`}
-          onClick={() => setTab("payment")}
-        >
-          Pay Invoice
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "refund"}
-          aria-controls="tabpanel-refund"
-          id="tab-refund"
-          className={`tab ${tab === "refund" ? "tab--active" : ""}`}
-          onClick={() => setTab("refund")}
-        >
-          Request Refund
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "compliance"}
-          aria-controls="tabpanel-compliance"
-          id="tab-compliance"
-          className={`tab ${tab === "compliance" ? "tab--active" : ""}`}
-          onClick={() => setTab("compliance")}
-        >
-          Compliance
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "tokens"}
-          aria-controls="tabpanel-tokens"
-          id="tab-tokens"
-          className={`tab ${tab === "tokens" ? "tab--active" : ""}`}
-          onClick={() => setTab("tokens")}
-        >
-          Token Allowlist
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "batch-expire"}
-          aria-controls="tabpanel-batch-expire"
-          id="tab-batch-expire"
-          className={`tab ${tab === "batch-expire" ? "tab--active" : ""}`}
-          onClick={() => setTab("batch-expire")}
-        >
-          Batch Expire
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "treasury"}
-          aria-controls="tabpanel-treasury"
-          id="tab-treasury"
-          className={`tab ${tab === "treasury" ? "tab--active" : ""}`}
-          onClick={() => setTab("treasury")}
-        >
-          Treasury
-        </button>
+        {TABS.map((id) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`tabpanel-${id}`}
+            id={`tab-${id}`}
+            className={`tab ${tab === id ? "tab--active" : ""}`}
+            onClick={() => setTab(id)}
+          >
+            {TAB_LABELS[id]}
+          </button>
+        ))}
       </nav>
 
-      <main className="app-main">
-        {tab === "payment" ? (
-          <InvoicePayment />
-        ) : tab === "refund" ? (
-          <RefundTab />
-        ) : tab === "tokens" ? (
-          <TokenAllowlist />
-        ) : tab === "compliance" ? (
-          <ComplianceManager />
-        ) : tab === "batch-expire" ? (
-          <BatchExpireInvoices walletAddress={address} />
-        ) : tab === "treasury" ? (
-          <TreasuryManager />
-        ) : null}
+      <main
+        className="app-main"
+        role="tabpanel"
+        id={`tabpanel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+      >
+        {renderTab(tab, address)}
       </main>
     </div>
   )
