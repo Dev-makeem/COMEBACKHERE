@@ -1,3 +1,5 @@
+import type { InvoiceStatus } from "../types"
+
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:3000"
 
 export interface ApiErrorDetail {
@@ -62,4 +64,50 @@ export function createInvoice(body: CreateInvoiceRequest): Promise<CreateInvoice
     method: "POST",
     body: JSON.stringify(body),
   })
+}
+
+/** Invoice as stored by the backend indexer (GET /invoices). */
+export interface InvoiceSummary {
+  invoice_id: string
+  merchant_address: string
+  token: string
+  /** Amount in the token's smallest unit */
+  amount: number
+  /** Unix timestamp (seconds) */
+  due_date: number
+  reference?: string
+  status: InvoiceStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface InvoicePage {
+  data: InvoiceSummary[]
+  total: number
+  /** Page cursor returned by the API (1-based) */
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export const INVOICE_PAGE_SIZE = 10
+
+export interface ListInvoicesParams {
+  merchant: string
+  status?: InvoiceStatus | null
+  page?: number
+  limit?: number
+}
+
+export async function listInvoices(
+  { merchant, status, page = 1, limit = INVOICE_PAGE_SIZE }: ListInvoicesParams,
+  signal?: AbortSignal
+): Promise<InvoicePage> {
+  const query = new URLSearchParams({ merchant, page: String(page), limit: String(limit) })
+  if (status) query.set("status", status)
+  const result = await request<InvoicePage | null>(`/invoices?${query.toString()}`, { signal })
+  if (!result || !Array.isArray(result.data)) {
+    throw new ApiError("Unexpected response from server", 200)
+  }
+  return result
 }

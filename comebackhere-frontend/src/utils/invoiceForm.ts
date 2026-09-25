@@ -40,6 +40,22 @@ export function toSmallestUnit(amount: string, decimals: number): bigint | null 
   return BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0") || "0")
 }
 
+/** Format an amount in the token's smallest unit as a decimal string. */
+export function fromSmallestUnit(units: number | string | bigint, decimals: number): string {
+  let value: bigint
+  try {
+    value = BigInt(units)
+  } catch {
+    return String(units)
+  }
+  const negative = value < 0n
+  if (negative) value = -value
+  const base = 10n ** BigInt(decimals)
+  const whole = (value / base).toString()
+  const fraction = (value % base).toString().padStart(decimals, "0").replace(/0+$/, "")
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`
+}
+
 /** Parse a datetime-local value into a Unix timestamp in seconds. */
 export function parseDueDate(value: string): number | null {
   if (!value) return null

@@ -6,6 +6,7 @@ import { TokenAllowlist } from "./components/TokenAllowlist"
 import { BatchExpireInvoices } from "./components/BatchExpireInvoices"
 import { TreasuryManager } from "./components/TreasuryManager"
 import { CreateInvoice } from "./components/CreateInvoice"
+import { InvoiceList } from "./components/InvoiceList"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
@@ -17,6 +18,7 @@ import "./components/ErrorBoundary.css"
 const TAB_LABELS: Record<Tab, string> = {
   payment: "Pay Invoice",
   create: "Create Invoice",
+  invoices: "My Invoices",
   refund: "Request Refund",
   compliance: "Compliance",
   tokens: "Token Allowlist",
@@ -97,12 +99,26 @@ function RefundTab() {
   )
 }
 
-function renderTab(tab: Tab, address: string | null) {
+interface TabContext {
+  address: string | null
+  setTab: (tab: Tab) => void
+  openInvoice: (invoiceId: string) => void
+}
+
+function renderTab(tab: Tab, { address, setTab, openInvoice }: TabContext) {
   switch (tab) {
     case "payment":
       return <InvoicePayment />
     case "create":
       return <CreateInvoice merchantAddress={address} />
+    case "invoices":
+      return (
+        <InvoiceList
+          merchantAddress={address}
+          onOpenInvoice={openInvoice}
+          onCreateInvoice={() => setTab("create")}
+        />
+      )
     case "refund":
       return <RefundTab />
     case "tokens":
@@ -129,6 +145,15 @@ export default function App() {
     disconnect()
     setTab("payment")
   }, [disconnect, setTab])
+
+  // Open an invoice from the list in the payment tab. InvoicePayment loads
+  // ?invoiceId= on mount, so the resulting URL is also shareable.
+  const openInvoice = useCallback((invoiceId: string) => {
+    const url = new URL(window.location.href)
+    url.searchParams.set("invoiceId", invoiceId)
+    window.history.replaceState(window.history.state, "", url)
+    setTab("payment")
+  }, [setTab])
 
   return (
     <div className="app">
@@ -183,7 +208,7 @@ export default function App() {
         id={`tabpanel-${tab}`}
         aria-labelledby={`tab-${tab}`}
       >
-        {renderTab(tab, address)}
+        {renderTab(tab, { address, setTab, openInvoice })}
       </main>
     </div>
   )

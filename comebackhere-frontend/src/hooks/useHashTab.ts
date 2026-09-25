@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react"
 export const TABS = [
   "payment",
   "create",
+  "invoices",
   "refund",
   "compliance",
   "tokens",

@@ -3,6 +3,7 @@ import { Keypair } from "soroban-client"
 import {
   isValidStellarAddress,
   toSmallestUnit,
+  fromSmallestUnit,
   parseDueDate,
   validateInvoiceForm,
   type InvoiceFormValues,
@@ -48,6 +49,23 @@ describe("toSmallestUnit", () => {
     expect(toSmallestUnit("abc", 7)).toBeNull()
     expect(toSmallestUnit(".", 7)).toBeNull()
     expect(toSmallestUnit("", 7)).toBeNull()
+  })
+})
+
+describe("fromSmallestUnit", () => {
+  it("formats base units as trimmed decimals", () => {
+    expect(fromSmallestUnit(125_000_000, 7)).toBe("12.5")
+    expect(fromSmallestUnit(10_000_000, 7)).toBe("1")
+    expect(fromSmallestUnit(1, 7)).toBe("0.0000001")
+    expect(fromSmallestUnit("0", 7)).toBe("0")
+  })
+
+  it("round-trips with toSmallestUnit", () => {
+    expect(fromSmallestUnit(toSmallestUnit("1234.5678", 7) as bigint, 7)).toBe("1234.5678")
+  })
+
+  it("returns non-integer input unchanged", () => {
+    expect(fromSmallestUnit(1.5, 7)).toBe("1.5")
   })
 })
 
