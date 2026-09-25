@@ -11,6 +11,12 @@
  *   resumes from that cursor.  The token is also mirrored to Redis (#209),
  *   which is used only when the indexer runs without Mongo.
  *
+ * Retention gaps:
+ *   If the cursor is older than the RPC node's event retention window the
+ *   missing ledger range is logged, counted in Prometheus metrics and stored
+ *   in indexer_gaps before the indexer continues from the oldest retained
+ *   ledger.  See docs/troubleshooting.md for the recovery procedure.
+ *
  * Idempotency:
  *   Every event is stored in invoice_events under its unique Soroban event
  *   id.  A crash between processing a batch and saving the cursor replays
@@ -36,11 +42,14 @@ import {
   connectMongo,
   getCursorsCollection,
   getInvoiceEventsCollection,
+  getIndexerGapsCollection,
   getInvoicesCollection,
   type IndexerCursor,
   type InvoiceEventRecord,
   type InvoiceStatus,
 } from "./db/mongo.js"
+import { getOldestRetainedLedger, ledgerFromPagingToken, parseRetentionError } from "./lib/soroban.js"
+import { counter, gauge } from "./lib/metrics.js"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -349,6 +358,64 @@ export async function saveMongoCursor(
 }
 
 // ---------------------------------------------------------------------------
+// RPC retention gaps
+// ---------------------------------------------------------------------------
+
+export const retentionGapsTotal = counter(
+  "indexer_retention_gaps_total",
+  "Times the indexer's resume ledger was older than the RPC node's retention window",
+)
+export const retentionGapLedgersTotal = counter(
+  "indexer_retention_gap_ledgers_total",
+  "Ledgers skipped because they had fallen out of the RPC node's retention window",
+)
+export const retentionGapLastMissing = gauge(
+  "indexer_retention_gap_last_missing_ledgers",
+  "Number of ledgers missing in the most recently detected retention gap",
+)
+
+/**
+ * Logs, counts and stores a range of ledgers the indexer could not read.
+ * Stored gaps (indexer_gaps, status "open") drive the recovery procedure in
+ * docs/troubleshooting.md. Keyed by range, so re-detecting is a no-op.
+ */
+export async function recordRetentionGap(
+  database: Db | null,
+  contractId: string,
+  fromLedger: number,
+  toLedger: number,
+): Promise<void> {
+  const missing = Math.max(0, toLedger - fromLedger + 1)
+  console.error(
+    `[indexer] RETENTION GAP: ledgers ${fromLedger}-${toLedger} (${missing} ledgers) are no longer ` +
+    `retained by the RPC node; events in this range were NOT indexed. Resuming from ledger ` +
+    `${toLedger + 1}. See docs/troubleshooting.md#indexer-retention-gaps to backfill.`
+  )
+
+  const labels = { indexer: "invoice" }
+  retentionGapsTotal.inc(labels)
+  retentionGapLedgersTotal.inc(labels, missing)
+  retentionGapLastMissing.set(missing, labels)
+
+  if (!database) return
+  await getIndexerGapsCollection(database).updateOne(
+    { _id: `invoice:${fromLedger}-${toLedger}` },
+    {
+      $setOnInsert: {
+        indexer: "invoice",
+        contract_id: contractId,
+        from_ledger: fromLedger,
+        to_ledger: toLedger,
+        missing_ledgers: missing,
+        status: "open",
+        detected_at: new Date(),
+      },
+    },
+    { upsert: true },
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Core poll loop
 // ---------------------------------------------------------------------------
 
@@ -356,6 +423,7 @@ export async function saveMongoCursor(
 export interface IndexerRpc {
   getEvents: (params: any) => Promise<any>
   getLatestLedger: () => Promise<{ sequence: number }>
+  getHealth?: () => Promise<unknown>
 }
 
 /** Ledger to start from when no cursor has ever been saved. */
@@ -395,11 +463,37 @@ export async function pollOnce(
   }
   if (!pagingToken && !startLedger) startLedger = await initialStartLedger(rpc)
 
-  const response = await rpc.getEvents({
-    ...(pagingToken ? { cursor: pagingToken } : { startLedger }),
-    filters: [{ type: "contract", contractIds: [contractId] }],
-    limit: EVENT_LIMIT,
-  })
+  const fetchEvents = () =>
+    rpc.getEvents({
+      ...(pagingToken ? { cursor: pagingToken } : { startLedger }),
+      filters: [{ type: "contract", contractIds: [contractId] }],
+      limit: EVENT_LIMIT,
+    })
+
+  let response: any
+  try {
+    response = await fetchEvents()
+  } catch (err) {
+    const retention = parseRetentionError(err)
+    if (!retention) throw err
+
+    // The resume point has fallen out of the node's retention window. Record
+    // the missing range before skipping ahead so the gap is never silent.
+    const oldest = Number.isFinite(retention.oldestLedger)
+      ? retention.oldestLedger
+      : await getOldestRetainedLedger(rpc)
+    if (oldest === null) throw err
+
+    const fromLedger =
+      startLedger ?? (pagingToken ? ledgerFromPagingToken(pagingToken) : null) ?? lastLedger
+    await recordRetentionGap(db, contractId, fromLedger, oldest - 1)
+
+    pagingToken = undefined
+    startLedger = oldest
+    lastLedger = oldest
+    if (db) await saveMongoCursor(db, null, oldest)
+    response = await fetchEvents()
+  }
 
   const events: any[] = response?.events ?? []
   let applied = 0

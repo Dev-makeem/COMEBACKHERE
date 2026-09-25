@@ -12,6 +12,7 @@ import { startComplianceIndexer } from "./services/compliance-indexer.js"
 import { rateLimitMiddleware } from "./middleware/rateLimiter.js"
 import { correlationIdMiddleware } from "./middleware/correlationId.js"
 import { openapiSpec } from "./openapi.js"
+import { renderMetrics } from "./lib/metrics.js"
 
 export function createApp() {
   const app = express()
@@ -23,6 +24,11 @@ export function createApp() {
 
   // ── Health ──────────────────────────────────────────────────────────────────
   app.get("/health", (_req, res) => res.json({ status: "ok" }))
+
+  // ── Prometheus metrics ──────────────────────────────────────────────────────
+  app.get("/metrics", (_req, res) => {
+    res.type("text/plain; version=0.0.4").send(renderMetrics())
+  })
 
   // ── OpenAPI spec (Issue #218) ───────────────────────────────────────────────
   // Raw JSON spec at a stable, machine-readable URL

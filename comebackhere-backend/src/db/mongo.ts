@@ -85,6 +85,19 @@ export interface InvoiceEventRecord {
   applied_at?: Date
 }
 
+/** A ledger range the indexer skipped because the RPC node no longer retained it. */
+export interface IndexerGapRecord {
+  _id: string
+  indexer: string
+  contract_id: string
+  from_ledger: number
+  to_ledger: number
+  missing_ledgers: number
+  status: "open" | "backfilled" | "accepted"
+  detected_at: Date
+  resolved_at?: Date
+}
+
 export const DEFAULT_PAGE_SIZE = 20
 export const MAX_PAGE_SIZE = 100
 
@@ -200,6 +213,10 @@ export function getCursorsCollection(database: Db): Collection<IndexerCursor> {
 
 export function getInvoiceEventsCollection(database: Db): Collection<InvoiceEventRecord> {
   return database.collection<InvoiceEventRecord>("invoice_events")
+}
+
+export function getIndexerGapsCollection(database: Db): Collection<IndexerGapRecord> {
+  return database.collection<IndexerGapRecord>("indexer_gaps")
 }
 
 export function getComplianceAuditCollection(database: Db): Collection<ComplianceAuditRecord> {
