@@ -12,6 +12,10 @@ All responses are JSON.
 > **Rate limits:** All endpoints are subject to per-IP rate limiting. See
 > [docs/rate-limits.md](./rate-limits.md) for default limits, configuration,
 > and the 429 response shape.
+>
+> **Errors:** Every error uses one envelope,
+> `{ "error": { "code", "message", "details", "correlationId" } }`. See
+> [Error response shape](#error-response-shape).
 
 ---
 
@@ -120,7 +124,7 @@ Create a new invoice by submitting `create_invoice` to the Soroban RPC.
 
 | Status | Description                                                    |
 | ------ | -------------------------------------------------------------- |
-| `400`  | Validation error — see `error` field for detail                |
+| `400`  | Validation error — see `error.details` for field-level detail  |
 | `422`  | Soroban simulation or transaction failure                      |
 | `503`  | Missing required environment variables                         |
 | `504`  | Transaction confirmation timeout                               |
@@ -166,7 +170,7 @@ Raise a dispute linked to a settlement, transitioning it to `OnHold`.
 
 | Status | Description                                                    |
 | ------ | -------------------------------------------------------------- |
-| `400`  | Validation error — see `error` field for detail                |
+| `400`  | Validation error — see `error.details` for field-level detail  |
 | `503`  | Missing required environment variables                         |
 | `500`  | Unexpected server error                                        |
 
@@ -649,11 +653,54 @@ webhook delivery is skipped silently (no error).
 
 ## Error response shape
 
-All error responses share this shape:
+Every non-2xx response, from every endpoint, uses the same envelope:
 
 ```json
-{ "error": "Human-readable description of the error." }
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "settlement_id: Must be a positive integer",
+    "details": [{ "field": "settlement_id", "message": "Must be a positive integer" }],
+    "correlationId": "5f1c9a8e-2b7d-4c1e-9a3f-0d2e6b7c8a91"
+  }
+}
 ```
+
+| Field           | Type           | Description                                                                                   |
+| --------------- | -------------- | --------------------------------------------------------------------------------------------- |
+| `code`          | string         | Stable, machine-readable error code (see below). Branch on this, not on `message`.            |
+| `message`       | string         | Human-readable description. May change between releases.                                      |
+| `details`       | any \| null    | Extra structured context; shape depends on `code`. `null` when there is nothing to add.        |
+| `correlationId` | string \| null | Same value as the `X-Request-Id` response header. Quote it when contacting support.           |
+
+Clients may send their own `X-Request-Id` header; it is echoed back as both the
+header and `correlationId`. Otherwise the server generates a UUID v4.
+
+### Error codes
+
+| HTTP | `code`                  | When                                                             | `details`                              |
+| ---- | ----------------------- | ---------------------------------------------------------------- | -------------------------------------- |
+| 400  | `VALIDATION_ERROR`      | Body, path or query parameters failed schema validation          | `[{ field, message }]`, one per issue  |
+| 400  | `INVALID_JSON`          | Request body is not valid JSON                                   | `null`                                 |
+| 401  | `UNAUTHORIZED`          | Missing or invalid `x-admin-key`                                 | `null`                                 |
+| 403  | `FORBIDDEN`             | Caller lacks permission                                          | `null`                                 |
+| 404  | `NOT_FOUND`             | Resource or route does not exist                                 | `null`                                 |
+| 409  | `CONFLICT`              | Request conflicts with current state (e.g. dispute already resolved) | Endpoint-specific, e.g. `{ outcome }` |
+| 4xx/5xx | `CONTRACT_ERROR`     | A Soroban contract returned `Error(Contract, #N)`                | `{ contractCode: N }` — see [error-codes.md](./error-codes.md) |
+| 422  | `UNPROCESSABLE_ENTITY`  | Soroban simulation / submission failed without a contract code   | `null`                                 |
+| 429  | `RATE_LIMITED`          | Per-IP rate limit exceeded                                       | `{ retryAfter }` (seconds)             |
+| 500  | `INTERNAL_ERROR`        | Unexpected server error                                          | `null`                                 |
+| 503  | `SERVICE_MISCONFIGURED` | Required environment variables are missing                       | `null`                                 |
+| 503  | `SERVICE_UNAVAILABLE`   | A dependency (e.g. MongoDB) is unreachable                       | `null`                                 |
+| 504  | `GATEWAY_TIMEOUT`       | Timed out waiting for Soroban transaction confirmation           | `null`                                 |
+
+### Server implementation
+
+Routes do not build error responses by hand. They throw a typed error from
+`comebackhere-backend/src/lib/errors.ts` (`ValidationError`, `NotFoundError`,
+`ConflictError`, `UnauthorizedError`, `ContractError`, …) and the central
+handler in `src/middleware/errorHandler.ts` renders the envelope. Async
+handlers are wrapped in `asyncHandler` so rejected promises reach it.
 
 ## Environment variables
 

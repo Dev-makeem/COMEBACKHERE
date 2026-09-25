@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express"
 import { validateQuery } from "../middleware/validate.js"
+import { asyncHandler } from "../lib/errors.js"
 import { analyticsQuerySchema } from "../schemas/index.js"
 
 const router = Router()
@@ -37,39 +38,34 @@ interface AnalyticsData {
  * - Disputes contract state (open disputes)
  * - Compliance contract state (blocks)
  */
-router.get("/metrics", validateQuery(analyticsQuerySchema), async (req: Request, res: Response) => {
-  try {
-    // In production, this would:
-    // 1. Query the invoice contract for invoice counts by status
-    // 2. Query treasury contract for settled volumes by token
-    // 3. Query disputes contract for open dispute count
-    // 4. Query compliance contract for active blocks
-    // 5. Apply date filters if provided
-    //
-    // For now, return realistic mock data that can be seeded/tested
-    const analyticsData: AnalyticsData = {
-      invoices: {
-        pending: 24,
-        paid: 156,
-        cancelled: 12,
-        expired: 8,
-        refund_requested: 3,
-      },
-      settled_volume: [
-        { token: "USDC", volume: 184250.5 },
-        { token: "XLM", volume: 52100.0 },
-        { token: "EURC", volume: 12450.75 },
-      ],
-      open_disputes: 7,
-      compliance_blocks: 3,
-      settlement_throughput: 89, // settled invoices in period
-    }
-
-    res.json(analyticsData)
-  } catch (error) {
-    console.error("Error fetching analytics metrics:", error)
-    res.status(500).json({ error: "Failed to fetch analytics metrics" })
+router.get("/metrics", validateQuery(analyticsQuerySchema), asyncHandler(async (req: Request, res: Response) => {
+  // In production, this would:
+  // 1. Query the invoice contract for invoice counts by status
+  // 2. Query treasury contract for settled volumes by token
+  // 3. Query disputes contract for open dispute count
+  // 4. Query compliance contract for active blocks
+  // 5. Apply date filters if provided
+  //
+  // For now, return realistic mock data that can be seeded/tested
+  const analyticsData: AnalyticsData = {
+    invoices: {
+      pending: 24,
+      paid: 156,
+      cancelled: 12,
+      expired: 8,
+      refund_requested: 3,
+    },
+    settled_volume: [
+      { token: "USDC", volume: 184250.5 },
+      { token: "XLM", volume: 52100.0 },
+      { token: "EURC", volume: 12450.75 },
+    ],
+    open_disputes: 7,
+    compliance_blocks: 3,
+    settlement_throughput: 89, // settled invoices in period
   }
-})
+
+  res.json(analyticsData)
+}))
 
 export default router

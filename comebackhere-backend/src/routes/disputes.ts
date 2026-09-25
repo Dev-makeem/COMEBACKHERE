@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express"
 import { requireEnv } from "../lib/env.js"
+import { asyncHandler, ConflictError } from "../lib/errors.js"
 import { validateBody } from "../middleware/validate.js"
 import { voteBodySchema, createDisputeSchema } from "../schemas/index.js"
 
@@ -83,7 +84,7 @@ type VoteValue = "ResolvedClaimant" | "ResolvedCounterparty"
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/:id/vote", validateBody(voteBodySchema), async (req: Request, res: Response) => {
+router.post("/:id/vote", validateBody(voteBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const disputeId = req.params.id
   const { signer_address, vote, weight } = req.body as {
     signer_address: string
@@ -99,13 +100,11 @@ router.post("/:id/vote", validateBody(voteBodySchema), async (req: Request, res:
   }
 
   if (state.outcome !== null) {
-    res.status(409).json({ error: "Dispute already resolved", outcome: state.outcome })
-    return
+    throw new ConflictError("Dispute already resolved", { outcome: state.outcome })
   }
 
   if (state.votes.has(signer_address)) {
-    res.status(409).json({ error: "Signer has already voted on this dispute" })
-    return
+    throw new ConflictError("Signer has already voted on this dispute")
   }
 
   state.votes.set(signer_address, vote)
@@ -136,7 +135,7 @@ router.post("/:id/vote", validateBody(voteBodySchema), async (req: Request, res:
     threshold,
     outcome: state.outcome,
   })
-})
+}))
 
 export interface CreateDisputeBody {
   /** Stellar public key of the party raising the dispute (claimant). */
@@ -206,32 +205,26 @@ export interface CreateDisputeBody {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/", validateBody(createDisputeSchema), async (req: Request, res: Response) => {
+router.post("/", validateBody(createDisputeSchema), asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as CreateDisputeBody
 
-  if (!requireEnv(res, { settlementContractId: "SETTLEMENT_CONTRACT_ID", signerSecret: "SIGNER_SECRET_KEY" })) return
+  requireEnv({ settlementContractId: "SETTLEMENT_CONTRACT_ID", signerSecret: "SIGNER_SECRET_KEY" })
 
   const settlementId = body.settlement_id
   const claimantAddress = body.claimant_address
 
-  try {
-    // In production this would call raise_dispute on the settlement contract via Soroban RPC.
-    // The contract transitions the settlement to OnHold atomically. Here we return the
-    // expected shape so downstream clients can integrate without a live node.
-    const disputeId = `${settlementId}-${Date.now()}`
+  // In production this would call raise_dispute on the settlement contract via Soroban RPC.
+  // The contract transitions the settlement to OnHold atomically. Here we return the
+  // expected shape so downstream clients can integrate without a live node.
+  const disputeId = `${settlementId}-${Date.now()}`
 
-    res.status(201).json({
-      dispute_id: disputeId,
-      settlement_id: settlementId,
-      claimant_address: claimantAddress,
-      status: "Raised",
-      settlement_status: "OnHold",
-    })
-  } catch (err: unknown) {
-    const status = (err as any)?.status ?? 500
-    const message = err instanceof Error ? err.message : String(err)
-    res.status(status).json({ error: message })
-  }
-})
+  res.status(201).json({
+    dispute_id: disputeId,
+    settlement_id: settlementId,
+    claimant_address: claimantAddress,
+    status: "Raised",
+    settlement_status: "OnHold",
+  })
+}))
 
 export default router

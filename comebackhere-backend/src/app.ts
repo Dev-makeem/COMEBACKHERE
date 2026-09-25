@@ -11,14 +11,16 @@ import analyticsRouter from "./routes/analytics.js"
 import { startComplianceIndexer } from "./services/compliance-indexer.js"
 import { rateLimitMiddleware } from "./middleware/rateLimiter.js"
 import { correlationIdMiddleware } from "./middleware/correlationId.js"
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js"
 import { openapiSpec } from "./openapi.js"
 
 export function createApp() {
   const app = express()
-  app.use(express.json())
   // Attach / propagate X-Request-Id before any other middleware so every log
-  // line and downstream call can reference the same correlation ID.
+  // line, downstream call and error envelope can reference the same
+  // correlation ID — including body-parsing errors.
   app.use(correlationIdMiddleware)
+  app.use(express.json())
   app.use(rateLimitMiddleware)
 
   // ── Health ──────────────────────────────────────────────────────────────────
@@ -42,6 +44,11 @@ export function createApp() {
   app.use("/api/treasury", thresholdRouter)
   app.use("/disputes", disputesRouter)
   app.use("/api/analytics", analyticsRouter)
+
+  // ── Errors ──────────────────────────────────────────────────────────────────
+  // Everything below produces { error: { code, message, details, correlationId } }
+  app.use(notFoundHandler)
+  app.use(errorHandler)
   // Start indexing only when the application is actually created; tests omit
   // the required contract/RPC configuration and therefore remain side-effect free.
   startComplianceIndexer()

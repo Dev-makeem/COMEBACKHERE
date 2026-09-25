@@ -1,4 +1,4 @@
-import type { Response } from "express"
+import { ServiceMisconfiguredError } from "./errors.js"
 import { getNetworkPassphrase } from "./soroban.js"
 
 /**
@@ -12,8 +12,6 @@ export type ContractEnv<P extends Record<string, string>> = {
   networkPassphrase: string
 } & { [Prop in keyof P]: string }
 
-const MISSING_ENV_ERROR = "Service misconfiguration: missing required environment variables"
-
 /**
  * Reads and validates the env vars a route needs from `process.env`.
  *
@@ -22,20 +20,16 @@ const MISSING_ENV_ERROR = "Service misconfiguration: missing required environmen
  * additional property name to the env var it should be read from, e.g.
  * `{ treasuryContractId: "TREASURY_CONTRACT_ID" }`.
  *
- * If any referenced var is unset, writes a 503 with the standard
- * misconfiguration error to `res` and returns null.
+ * If any referenced var is unset, throws a {@link ServiceMisconfiguredError}
+ * (503 in the standard error envelope).
  */
-export function requireEnv<P extends Record<string, string>>(
-  res: Response,
-  vars: P,
-): ContractEnv<P> | null {
+export function requireEnv<P extends Record<string, string>>(vars: P): ContractEnv<P> {
   const missing = [
     !process.env.SOROBAN_RPC_URL ? "SOROBAN_RPC_URL" : null,
     ...Object.values(vars).filter((envName) => !process.env[envName]),
   ].filter(Boolean)
   if (missing.length > 0) {
-    res.status(503).json({ error: MISSING_ENV_ERROR })
-    return null
+    throw new ServiceMisconfiguredError()
   }
 
   const values = Object.fromEntries(
