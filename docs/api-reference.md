@@ -128,6 +128,48 @@ Create a new invoice by submitting `create_invoice` to the Soroban RPC.
 
 ---
 
+### `GET /invoices/export.csv`
+
+Downloads invoices as a CSV file for accounting tools. Accepts the same filters
+as `GET /invoices` (without pagination) and the same authentication; every
+matching invoice is exported, newest first. Rows are streamed from the database
+cursor, so large exports do not load into memory.
+
+#### Query parameters
+
+| Parameter  | Type   | Description                                                                 |
+| ---------- | ------ | --------------------------------------------------------------------------- |
+| `status`   | string | Optional. `Pending`, `Paid`, `Expired`, `Cancelled`, `RefundRequested`, `Released` |
+| `merchant` | string | Optional. Merchant Stellar address                                          |
+
+**Response `200`** — `Content-Type: text/csv; charset=utf-8`,
+`Content-Disposition: attachment; filename="invoices-2026-09-25.csv"`
+(`invoices-<status>-<date>.csv` when filtered by status).
+
+```csv
+invoice_id,merchant_address,token,amount_raw,amount,status,reference,due_date,created_at,updated_at
+1,GDR7...T5XT,USDC,12500000,1.25 USDC,Paid,"Order ""A"", batch 2",2026-01-01T00:00:00.000Z,2025-12-01T10:00:00.000Z,2025-12-02T10:00:00.000Z
+```
+
+- Fields follow RFC 4180: values containing commas, quotes or line breaks are
+  quoted, and quotes are doubled. Rows end with CRLF.
+- Text beginning with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'` so
+  spreadsheets do not evaluate it as a formula.
+- `amount_raw` is in the token's smallest unit; `amount` is the human-readable
+  value with the token symbol. Tokens default to 7 decimals with the stored
+  token value as symbol; override per token with the `TOKEN_METADATA`
+  environment variable, e.g.
+  `{"C...USDC_CONTRACT":{"symbol":"USDC","decimals":7}}`.
+- Dates are ISO 8601 in UTC.
+
+#### Errors
+
+| Status | Description                                                                 |
+| ------ | --------------------------------------------------------------------------- |
+| `500`  | Database error before streaming started (JSON body). Errors after streaming started abort the download |
+
+---
+
 ## Disputes
 
 ### `POST /disputes`
