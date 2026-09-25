@@ -575,6 +575,60 @@ The service indexes `address_allowed`, `address_allowed_until`, `address_blocked
 
 ---
 
+## Analytics
+
+### `GET /api/analytics/metrics`
+
+Returns protocol totals for the admin dashboard. With `bucket`, returns a time
+series instead, for charts such as invoices per day or settlement volume per
+week.
+
+#### Query parameters
+
+| Parameter    | Type   | Description                                                              |
+| ------------ | ------ | ------------------------------------------------------------------------ |
+| `start_date` | number | Optional. Unix timestamp (seconds), inclusive                            |
+| `end_date`   | number | Optional. Unix timestamp (seconds), inclusive. Defaults to now           |
+| `bucket`     | string | Optional. `day`, `week` or `month`                                       |
+| `merchant`   | string | Optional. Only count invoices of this merchant (series only)             |
+| `token`      | string | Optional. Only count invoices in this token (series only)                |
+
+**Time zone:** buckets are always computed in **UTC**. Weeks start on Monday
+(ISO 8601) and months on the 1st. `period` is the first day of the bucket in
+`YYYY-MM-DD` form. Without `start_date` the series covers the last 30 days,
+12 weeks or 12 months, depending on `bucket`. A request may span at most 1000
+buckets.
+
+Every bucket in the range is returned, with zeros for periods without
+activity, so charts do not skip dates. `count` is the number of invoices
+created in the bucket; `volume` is the sum of raw amounts (smallest token
+unit) of those invoices that are settled (`Paid` or `Released`).
+
+**Response `200` (with `bucket=day`)**
+
+```json
+{
+  "bucket": "day",
+  "timezone": "UTC",
+  "start_date": 1767225600,
+  "end_date": 1767398400,
+  "series": [
+    { "period": "2026-01-01", "count": 4, "volume": 3000000 },
+    { "period": "2026-01-02", "count": 0, "volume": 0 },
+    { "period": "2026-01-03", "count": 1, "volume": 0 }
+  ]
+}
+```
+
+#### Errors
+
+| Status | Description                                                          |
+| ------ | -------------------------------------------------------------------- |
+| `400`  | Invalid `bucket`, timestamps, `merchant`, or a range over 1000 buckets |
+| `500`  | Unexpected server error                                              |
+
+---
+
 ## Webhooks
 
 COMEBACKHERE signs every outbound webhook POST with HMAC-SHA256 so your endpoint
