@@ -10,6 +10,7 @@
 import { createApp } from "./app.js"
 import { startTreasuryIndexer, stopTreasuryIndexer } from "./services/treasury-indexer.js"
 import { stopIndexer } from "./indexer.js"
+import { stopComplianceIndexer } from "./services/compliance-indexer.js"
 import { closeMongo } from "./db/mongo.js"
 import { webhookDeliveryQueue } from "./services/webhook-delivery.js"
 import { createShutdownHandler, resolveWebhookDrainTimeout } from "./shutdown.js"
@@ -58,11 +59,21 @@ const shutdown = createShutdownHandler({
   stopIndexers: () => {
     stopTreasuryIndexer()
     stopIndexer()
-  },
-  closeMongo,
-  shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
-  webhookDrainTimeoutMs: WEBHOOK_DRAIN_TIMEOUT_MS,
-})
+    stopComplianceIndexer()
+    console.log("[shutdown] indexers stopped")
+
+    // 3. Close MongoDB connection.
+    await closeMongo()
+    console.log("[shutdown] MongoDB connection closed")
+
+    clearTimeout(hardTimeout)
+    console.log("[shutdown] clean exit")
+    process.exit(0)
+  } catch (err) {
+    console.error("[shutdown] error during shutdown:", err)
+    process.exit(1)
+  }
+}
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"))
 process.on("SIGINT",  () => void shutdown("SIGINT"))

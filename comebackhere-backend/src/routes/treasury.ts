@@ -2,12 +2,13 @@ import { Router, type Request, type Response } from "express"
 import { Keypair, nativeToScVal, Address } from "stellar-sdk"
 import {
   buildSorobanClient,
-  getNetworkPassphrase,
   getOnChainSettlement,
+  getSettlementSimulation,
   getTokenBalance,
   submitContractCall,
   type SorobanClient,
 } from "../lib/soroban.js"
+import { requireEnv } from "../lib/env.js"
 import { connectMongo, getSettlementsCollection } from "../db/mongo.js"
 import { validateBody } from "../middleware/validate.js"
 import {
@@ -22,29 +23,6 @@ const router = Router()
 // #212 — balance cache lives in lib/cache.ts so the treasury indexer can
 // invalidate it too; re-exported here for existing callers.
 export { getBalanceCache, setBalanceCache, invalidateBalanceCache }
-
-function requireEnv(res: Response): {
-  rpcUrl: string
-  treasuryContractId: string
-  usdcContractId: string
-  signerSecret: string
-  networkPassphrase: string
-} | null {
-  const rpcUrl = process.env.SOROBAN_RPC_URL
-  const treasuryContractId = process.env.TREASURY_CONTRACT_ID
-  const usdcContractId = process.env.USDC_CONTRACT_ID
-  const signerSecret = process.env.SIGNER_SECRET_KEY
-  const networkPassphrase = getNetworkPassphrase()
-
-  if (!rpcUrl || !treasuryContractId || !usdcContractId || !signerSecret) {
-    res.status(503).json({
-      error: "Service misconfiguration: missing required environment variables",
-    })
-    return null
-  }
-
-  return { rpcUrl, treasuryContractId, usdcContractId, signerSecret, networkPassphrase }
-}
 
 /**
  * @openapi
@@ -133,7 +111,11 @@ router.get("/pending-settlements", async (_req: Request, res: Response) => {
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post("/approve-settlement", validateBody(settlementIdSchema), async (req: Request, res: Response) => {
-  const env = requireEnv(res)
+  const env = requireEnv(res, {
+    treasuryContractId: "TREASURY_CONTRACT_ID",
+    usdcContractId: "USDC_CONTRACT_ID",
+    signerSecret: "SIGNER_SECRET_KEY",
+  })
   if (!env) return
 
   const settlementId = req.body.settlement_id
@@ -343,7 +325,11 @@ export async function executeSettlementWithBalanceCheck(
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post("/execute-settlement", validateBody(executeSettlementSchema), async (req: Request, res: Response) => {
-  const env = requireEnv(res)
+  const env = requireEnv(res, {
+    treasuryContractId: "TREASURY_CONTRACT_ID",
+    usdcContractId: "USDC_CONTRACT_ID",
+    signerSecret: "SIGNER_SECRET_KEY",
+  })
   if (!env) return
 
   const { settlement_id: settlementId, token_contract } = req.body as { settlement_id: number; token_contract?: string }
@@ -355,6 +341,151 @@ router.post("/execute-settlement", validateBody(executeSettlementSchema), async 
     )
     // #212 — balance changed; evict the cache so the next GET /balances is fresh
     invalidateBalanceCache(`execute-settlement id=${settlementId}`)
+    res.json(result)
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 500
+    const message = err instanceof Error ? err.message : String(err)
+    res.status(status).json({ error: message })
+  }
+})
+
+export interface SimulateSettlementBody {
+  settlement_id: number
+}
+
+export interface SimulateSettlementDeps {
+  getSettlementSimulation: typeof getSettlementSimulation
+}
+
+const defaultSimulateSettlementDeps: SimulateSettlementDeps = {
+  getSettlementSimulation,
+}
+
+/**
+ * Previews whether `execute_settlement` would succeed for `settlement_id` right now
+ * (quorum reached, treasury balance sufficient) without submitting or mutating any
+ * on-chain state.
+ */
+export async function simulateSettlement(
+  body: SimulateSettlementBody,
+  env: {
+    rpcUrl: string
+    treasuryContractId: string
+    signerSecret: string
+    networkPassphrase: string
+  },
+  clientOverride?: SorobanClient,
+  deps: SimulateSettlementDeps = defaultSimulateSettlementDeps,
+): Promise<{
+  settlement_id: number
+  status: string
+  would_succeed: boolean
+  approval_weight: string
+  threshold: string
+  settlement_amount: string
+  treasury_balance: string
+  projected_balance: string
+}> {
+  const client = clientOverride ?? buildSorobanClient(env.rpcUrl)
+  const keypair = Keypair.fromSecret(env.signerSecret)
+
+  const simulation = await deps.getSettlementSimulation(
+    client,
+    env.treasuryContractId,
+    BigInt(body.settlement_id),
+    keypair.publicKey(),
+    env.networkPassphrase,
+  )
+
+  return {
+    settlement_id: body.settlement_id,
+    status: simulation.status,
+    would_succeed: simulation.wouldSucceed,
+    approval_weight: simulation.approvalWeight.toString(),
+    threshold: simulation.threshold.toString(),
+    settlement_amount: simulation.settlementAmount.toString(),
+    treasury_balance: simulation.treasuryBalance.toString(),
+    projected_balance: simulation.projectedBalance.toString(),
+  }
+}
+
+/**
+ * @openapi
+ * /api/treasury/simulate-settlement:
+ *   post:
+ *     tags: [Treasury]
+ *     summary: Preview whether execute-settlement would succeed, without mutating state
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [settlement_id]
+ *             properties:
+ *               settlement_id:
+ *                 type: integer
+ *                 description: Positive integer settlement ID
+ *                 example: 1
+ *     responses:
+ *       200:
+ *         description: Simulation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 settlement_id:
+ *                   type: integer
+ *                   example: 1
+ *                 status:
+ *                   type: string
+ *                   example: "Pending"
+ *                 would_succeed:
+ *                   type: boolean
+ *                   example: true
+ *                 approval_weight:
+ *                   type: string
+ *                   example: "2"
+ *                 threshold:
+ *                   type: string
+ *                   example: "2"
+ *                 settlement_amount:
+ *                   type: string
+ *                   example: "5000000"
+ *                 treasury_balance:
+ *                   type: string
+ *                   example: "10000000"
+ *                 projected_balance:
+ *                   type: string
+ *                   example: "5000000"
+ *       400:
+ *         description: settlement_id is not a positive integer
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       422:
+ *         description: Soroban simulation failure (e.g. settlement not found)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: Service misconfiguration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/simulate-settlement", validateBody(settlementIdSchema), async (req: Request, res: Response) => {
+  const env = requireEnv(res)
+  if (!env) return
+
+  const settlementId = req.body.settlement_id
+
+  try {
+    const result = await simulateSettlement({ settlement_id: settlementId }, env)
     res.json(result)
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 500
@@ -585,7 +716,11 @@ router.post("/escalate-hold", validateBody(escalateHoldSchema), async (req: Requ
  * Results are cached for up to 5 seconds to reduce Soroban RPC load (#212).
  */
 router.get("/balances", async (_req: Request, res: Response) => {
-  const env = requireEnv(res)
+  const env = requireEnv(res, {
+    treasuryContractId: "TREASURY_CONTRACT_ID",
+    usdcContractId: "USDC_CONTRACT_ID",
+    signerSecret: "SIGNER_SECRET_KEY",
+  })
   if (!env) return
 
   // #212 — serve from cache when available

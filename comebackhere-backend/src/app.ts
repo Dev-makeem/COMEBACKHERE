@@ -8,9 +8,11 @@ import invoiceSettingsRouter from "./routes/invoice-settings.js"
 import thresholdRouter from "./routes/threshold.js"
 import disputesRouter from "./routes/disputes.js"
 import analyticsRouter from "./routes/analytics.js"
+import { startComplianceIndexer } from "./services/compliance-indexer.js"
 import { rateLimitMiddleware } from "./middleware/rateLimiter.js"
 import { correlationIdMiddleware } from "./middleware/correlationId.js"
 import { openapiSpec } from "./openapi.js"
+import { renderMetrics } from "./lib/metrics.js"
 
 export function createApp() {
   const app = express()
@@ -22,6 +24,11 @@ export function createApp() {
 
   // ── Health ──────────────────────────────────────────────────────────────────
   app.get("/health", (_req, res) => res.json({ status: "ok" }))
+
+  // ── Prometheus metrics ──────────────────────────────────────────────────────
+  app.get("/metrics", (_req, res) => {
+    res.type("text/plain; version=0.0.4").send(renderMetrics())
+  })
 
   // ── OpenAPI spec (Issue #218) ───────────────────────────────────────────────
   // Raw JSON spec at a stable, machine-readable URL
@@ -41,5 +48,8 @@ export function createApp() {
   app.use("/api/treasury", thresholdRouter)
   app.use("/disputes", disputesRouter)
   app.use("/api/analytics", analyticsRouter)
+  // Start indexing only when the application is actually created; tests omit
+  // the required contract/RPC configuration and therefore remain side-effect free.
+  startComplianceIndexer()
   return app
 }

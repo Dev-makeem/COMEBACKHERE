@@ -1,88 +1,50 @@
-/**
- * Startup environment validation.
- *
- * Checks that required variables are present and that Stellar identifiers
- * are well-formed, so a typo in a contract id fails at boot with a message
- * naming the variable instead of surfacing later as an opaque RPC error.
- *
- * scripts/validate_backend_env.sh mirrors these checks for pre-deploy use —
- * keep the two lists in sync.
- */
-
-import { StrKey } from "stellar-sdk"
-
-/** Variables the backend cannot start without. */
-export const REQUIRED_ENV_VARS = [
-  "MONGODB_URI",
-  "REDIS_URL",
-  "SOROBAN_RPC_URL",
-  "TREASURY_CONTRACT_ID",
-  "INVOICE_CONTRACT_ID",
-  "ADMIN_KEY",
-  "WEBHOOK_SECRET",
-] as const
-
-/** Soroban contract ids — must be valid C... strkeys when set. */
-export const CONTRACT_ID_VARS = [
-  "TREASURY_CONTRACT_ID",
-  "INVOICE_CONTRACT_ID",
-  "USDC_CONTRACT_ID",
-  "COMPLIANCE_CONTRACT_ID",
-  "SETTLEMENT_CONTRACT_ID",
-] as const
-
-/** Stellar account public keys — must be valid G... strkeys when set. */
-export const ACCOUNT_KEY_VARS = ["ADMIN_PUBLIC_KEY"] as const
-
-/** Stellar secret seeds — must be valid S... strkeys when set. Values are never echoed. */
-export const SECRET_SEED_VARS = ["SIGNER_SECRET_KEY"] as const
-
-type Env = Record<string, string | undefined>
-
-/** Returns one human-readable problem per invalid Stellar identifier in `env`. */
-export function findInvalidStellarVars(env: Env): string[] {
-  const problems: string[] = []
-
-  for (const name of CONTRACT_ID_VARS) {
-    const value = env[name]
-    if (value && !StrKey.isValidContract(value)) {
-      problems.push(`${name} is not a valid Stellar contract id (expected C... address, got "${value}")`)
-    }
-  }
-
-  for (const name of ACCOUNT_KEY_VARS) {
-    const value = env[name]
-    if (value && !StrKey.isValidEd25519PublicKey(value)) {
-      problems.push(`${name} is not a valid Stellar account key (expected G... address, got "${value}")`)
-    }
-  }
-
-  for (const name of SECRET_SEED_VARS) {
-    const value = env[name]
-    if (value && !StrKey.isValidEd25519SecretSeed(value)) {
-      problems.push(`${name} is not a valid Stellar secret seed (expected S... key)`)
-    }
-  }
-
-  return problems
-}
+import type { Response } from "express"
+import { getNetworkPassphrase } from "./soroban.js"
 
 /**
- * Throws a single error listing every missing required variable and every
- * malformed Stellar identifier, so operators can fix them all in one pass.
+ * Env object returned by {@link requireEnv} for a route.
+ *
+ * `rpcUrl` and `networkPassphrase` are always present. Every additional
+ * property comes from the `vars` mapping passed to {@link requireEnv}.
  */
-export function validateEnv(env: Env = process.env): void {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !env[name]?.trim())
-  const invalid = findInvalidStellarVars(env)
+export type ContractEnv<P extends Record<string, string>> = {
+  rpcUrl: string
+  networkPassphrase: string
+} & { [Prop in keyof P]: string }
 
-  if (missing.length === 0 && invalid.length === 0) return
+const MISSING_ENV_ERROR = "Service misconfiguration: missing required environment variables"
 
-  const lines = [
-    ...missing.map((name) => `  - ${name} is missing`),
-    ...invalid.map((problem) => `  - ${problem}`),
-  ]
-  throw new Error(
-    `Invalid backend environment:\n${lines.join("\n")}\n` +
-      "Set the above variables to valid values before starting the backend.",
-  )
+/**
+ * Reads and validates the env vars a route needs from `process.env`.
+ *
+ * `SOROBAN_RPC_URL` (returned as `rpcUrl`) and the network passphrase
+ * (returned as `networkPassphrase`) are always validated. `vars` maps each
+ * additional property name to the env var it should be read from, e.g.
+ * `{ treasuryContractId: "TREASURY_CONTRACT_ID" }`.
+ *
+ * If any referenced var is unset, writes a 503 with the standard
+ * misconfiguration error to `res` and returns null.
+ */
+export function requireEnv<P extends Record<string, string>>(
+  res: Response,
+  vars: P,
+): ContractEnv<P> | null {
+  const missing = [
+    !process.env.SOROBAN_RPC_URL ? "SOROBAN_RPC_URL" : null,
+    ...Object.values(vars).filter((envName) => !process.env[envName]),
+  ].filter(Boolean)
+  if (missing.length > 0) {
+    res.status(503).json({ error: MISSING_ENV_ERROR })
+    return null
+  }
+
+  const values = Object.fromEntries(
+    Object.entries(vars).map(([prop, envName]) => [prop, process.env[envName] as string]),
+  ) as { [Prop in keyof P]: string }
+
+  return {
+    rpcUrl: process.env.SOROBAN_RPC_URL as string,
+    networkPassphrase: getNetworkPassphrase(),
+    ...values,
+  }
 }

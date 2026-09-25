@@ -7,6 +7,8 @@ import { RefundConfirmationModal } from "./RefundConfirmationModal"
 interface RefundRequestProps {
   invoice: Invoice
   walletAddress: string | null
+  /** Why the wallet cannot sign right now; disables the request when set. */
+  walletNotReadyReason?: string | null
   onRequestRefund: () => Promise<{
     success: boolean
     transaction_hash?: string
@@ -24,6 +26,7 @@ const REFUND_CONSTRAINTS = {
 export function RefundRequest({
   invoice,
   walletAddress,
+  walletNotReadyReason = null,
   onRequestRefund,
 }: RefundRequestProps) {
   const [showConfirm, setShowConfirm] = useState(false)
@@ -148,11 +151,17 @@ export function RefundRequest({
           <button 
             className="btn btn--danger" 
             onClick={handleRefundClick}
-            disabled={!reason.trim() || !!reasonError || submitting}
+            disabled={!reason.trim() || !!reasonError || submitting || !!walletNotReadyReason}
+            aria-describedby={walletNotReadyReason ? "refund-wallet-reason" : undefined}
             aria-label={`Request refund for invoice #${invoice.id}`}
           >
             Request Refund
           </button>
+          {walletNotReadyReason && (
+            <p id="refund-wallet-reason" className="wallet-required" data-testid="wallet-not-ready">
+              {walletNotReadyReason}
+            </p>
+          )}
         </>
       )}
 

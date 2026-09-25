@@ -8,10 +8,10 @@
  * Idempotency: every payload includes an `idempotency_key` so the merchant can
  * detect duplicate deliveries caused by retries.
  *
- * Graceful shutdown: deliveries started through `WebhookDeliveryQueue` are
- * tracked so that on SIGTERM the queue can stop accepting jobs, wait for
- * in-flight deliveries up to a timeout, and persist whatever is unfinished
- * so it is retried after restart instead of being dropped.
+ * Correlation: when a correlation ID is supplied (e.g. `res.locals.requestId`
+ * from the correlationId middleware, issue #224), it is forwarded as an
+ * `X-Request-Id` header on every delivery attempt so the merchant can trace a
+ * single event across both the backend and their own logs.
  */
 
 import { connectMongo } from "../db/mongo.js"
@@ -44,6 +44,8 @@ export interface WebhookDeliveryRecord {
   last_attempt_at: string | null
   last_status_code: number | null
   last_error: string | null
+  /** Correlation ID forwarded as `X-Request-Id`, or null when none was supplied. */
+  request_id: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -63,23 +65,32 @@ export const BASE_DELAY_MS = 1_000
  * or throws on network error / timeout.
  *
  * Swappable via the `fetchFn` parameter so tests can inject a fake.
+ *
+ * @param correlationId Correlation ID forwarded as the `X-Request-Id` header
+ *                      (e.g. `res.locals.requestId`). Omitted when undefined.
  */
 export async function postWebhook(
   endpoint: string,
   payload: WebhookPayload,
   fetchFn: typeof fetch = fetch,
   timeoutMs = 10_000,
+  correlationId?: string,
 ): Promise<number> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Idempotency-Key": payload.idempotency_key,
+  }
+  if (correlationId && correlationId.trim() !== "") {
+    headers["X-Request-Id"] = correlationId
+  }
+
   try {
     const response = await fetchFn(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": payload.idempotency_key,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     })
@@ -109,10 +120,9 @@ export function defaultDelay(ms: number): Promise<void> {
  * @param maxAttempts   Hard cap on delivery attempts (default: 5).
  * @param fetchFn       Fetch implementation (injectable for tests).
  * @param delayFn       Sleep implementation (injectable for tests).
- * @param options       `signal` stops further attempts (the record is returned
- *                      with status "pending"); `startAttempt` resumes a job
- *                      that already used some of its attempts; `onAttempt`
- *                      is called before each attempt.
+ * @param correlationId Correlation ID forwarded as the `X-Request-Id` header on
+ *                      every attempt (e.g. `res.locals.requestId`). Preserved
+ *                      across retries and recorded on the delivery record.
  * @returns             A delivery record describing the final outcome.
  */
 export async function deliverWebhook(
@@ -121,11 +131,7 @@ export async function deliverWebhook(
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   fetchFn: typeof fetch = fetch,
   delayFn: (ms: number) => Promise<void> = defaultDelay,
-  options: {
-    signal?: AbortSignal
-    startAttempt?: number
-    onAttempt?: (attempt: number) => void
-  } = {},
+  correlationId?: string,
 ): Promise<WebhookDeliveryRecord> {
   const { signal, startAttempt = 0, onAttempt } = options
   const record: WebhookDeliveryRecord = {
@@ -137,6 +143,7 @@ export async function deliverWebhook(
     last_attempt_at: null,
     last_status_code: null,
     last_error: null,
+    request_id: correlationId ?? null,
   }
 
   for (let attempt = startAttempt; attempt < maxAttempts; attempt++) {
@@ -148,7 +155,7 @@ export async function deliverWebhook(
     record.last_attempt_at = new Date().toISOString()
 
     try {
-      const statusCode = await postWebhook(endpoint, payload, fetchFn)
+      const statusCode = await postWebhook(endpoint, payload, fetchFn, undefined, correlationId)
       record.last_status_code = statusCode
 
       if (statusCode >= 200 && statusCode < 300) {
@@ -175,7 +182,8 @@ export async function deliverWebhook(
   record.status = "failed"
   console.error(
     `[webhook] delivery failed after ${record.attempts} attempt(s) ` +
-    `key=${record.idempotency_key} endpoint=${endpoint} last_error=${record.last_error}`,
+    `key=${record.idempotency_key} requestId=${record.request_id ?? "-"} ` +
+    `endpoint=${endpoint} last_error=${record.last_error}`,
   )
   return record
 }

@@ -1,5 +1,30 @@
 import { MongoClient, type Db, type Collection, MongoServerSelectionError } from "mongodb"
 
+export type InvoiceStatus = "Pending" | "Paid" | "Expired" | "Cancelled" | "RefundRequested" | "Released"
+
+export interface LegacyInvoiceRecord {
+  invoice_id: string
+  merchant_address: string
+  token: string
+  amount: number
+  due_date: number
+  status: InvoiceStatus
+  created_at: Date
+  updated_at: Date
+}
+
+export interface InvoiceRecord {
+  invoice_id: string
+  merchant_address: string
+  token: string
+  amount: number
+  due_date: number
+  reference?: string
+  status: InvoiceStatus
+  created_at: Date
+  updated_at: Date
+}
+
 export interface SettlementRecord {
   id: number
   merchant_address: string
@@ -14,6 +39,21 @@ export interface SettlementRecord {
   executed_tx_hash?: string
 }
 
+export type ComplianceAuditEventType = "address_allowed" | "address_allowed_until" | "address_blocked" | "address_cleared"
+
+export interface ComplianceAuditRecord {
+  event_id: string
+  event_type: ComplianceAuditEventType
+  address: string
+  expires_at: number | null
+  ledger: number
+  ledger_closed_at: string | null
+  transaction_hash: string
+  contract_id: string
+  paging_token: string | null
+  created_at: Date
+}
+
 export interface IndexerCursor {
   _id: string
   paging_token: string | null
@@ -23,32 +63,39 @@ export interface IndexerCursor {
   processed_event_ids?: string[]
 }
 
-export type InvoiceStatus =
-  | "Pending"
-  | "Paid"
-  | "Expired"
-  | "Cancelled"
-  | "RefundRequested"
-  | "Released"
-
-export interface InvoiceRecord {
+/**
+ * One indexed invoice contract event. `event_id` is the Soroban event id and
+ * is unique, so replaying a ledger range is a no-op for events already seen.
+ * `applied` flips to true once the event's side effects have run; an event
+ * stored with `applied: false` (crash mid-apply) is re-applied on replay.
+ */
+export interface InvoiceEventRecord {
+  event_id: string
+  paging_token: string | null
+  event_type: string
   invoice_id: string
-  merchant_address: string
-  payer_address?: string | null
-  token: string
-  amount: number | string
-  due_date?: number           // Unix timestamp (seconds)
-  status: InvoiceStatus
-  created_at: Date | number | null // Date (API-created) or Unix seconds (indexed)
-  expires_at?: number | null  // Unix timestamp (seconds)
-  paid_at?: number | null     // Unix timestamp (seconds)
-  tx_hash?: string | null
-  updated_at: Date
+  ledger: number
+  ledger_closed_at: string
+  transaction_hash: string
+  contract_id: string
+  raw_topics: string[]
+  raw_value: string
+  applied: boolean
+  created_at: Date
+  applied_at?: Date
 }
 
-export interface InvoiceSearchFilter {
-  status?: InvoiceStatus
-  merchant_address?: string
+/** A ledger range the indexer skipped because the RPC node no longer retained it. */
+export interface IndexerGapRecord {
+  _id: string
+  indexer: string
+  contract_id: string
+  from_ledger: number
+  to_ledger: number
+  missing_ledgers: number
+  status: "open" | "backfilled" | "accepted"
+  detected_at: Date
+  resolved_at?: Date
 }
 
 export const DEFAULT_PAGE_SIZE = 20
@@ -139,6 +186,16 @@ export async function connectMongo(): Promise<Db> {
   const cursors = db.collection<IndexerCursor>("indexer_cursors")
   await cursors.createIndex({ _id: 1 }, { unique: true })
 
+  const invoiceEvents = db.collection<InvoiceEventRecord>("invoice_events")
+  await invoiceEvents.createIndex({ event_id: 1 }, { unique: true })
+  await invoiceEvents.createIndex({ invoice_id: 1, ledger: 1 })
+
+  const complianceAudit = db.collection<ComplianceAuditRecord>("compliance_audit")
+  await complianceAudit.createIndex({ event_id: 1 }, { unique: true })
+  await complianceAudit.createIndex({ address: 1, ledger: -1 })
+  await complianceAudit.createIndex({ event_type: 1, ledger: -1 })
+  await complianceAudit.createIndex({ ledger: -1 })
+
   return db
 }
 
@@ -152,6 +209,18 @@ export function getSettlementsCollection(database: Db): Collection<SettlementRec
 
 export function getCursorsCollection(database: Db): Collection<IndexerCursor> {
   return database.collection<IndexerCursor>("indexer_cursors")
+}
+
+export function getInvoiceEventsCollection(database: Db): Collection<InvoiceEventRecord> {
+  return database.collection<InvoiceEventRecord>("invoice_events")
+}
+
+export function getIndexerGapsCollection(database: Db): Collection<IndexerGapRecord> {
+  return database.collection<IndexerGapRecord>("indexer_gaps")
+}
+
+export function getComplianceAuditCollection(database: Db): Collection<ComplianceAuditRecord> {
+  return database.collection<ComplianceAuditRecord>("compliance_audit")
 }
 
 export async function closeMongo(): Promise<void> {

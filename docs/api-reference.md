@@ -8,6 +8,10 @@ All responses are JSON.
 > **Machine-readable spec:** A Swagger/OpenAPI 3.0 spec is served at
 > [`GET /api-docs/swagger.json`](http://localhost:3000/api-docs/swagger.json) (raw JSON)
 > and [`GET /api-docs`](http://localhost:3000/api-docs) (interactive Swagger UI).
+>
+> **Rate limits:** All endpoints are subject to per-IP rate limiting. See
+> [docs/rate-limits.md](./rate-limits.md) for default limits, configuration,
+> and the 429 response shape.
 
 ---
 
@@ -121,6 +125,48 @@ Create a new invoice by submitting `create_invoice` to the Soroban RPC.
 | `503`  | Missing required environment variables                         |
 | `504`  | Transaction confirmation timeout                               |
 | `500`  | Unexpected server error                                        |
+
+---
+
+### `GET /invoices/export.csv`
+
+Downloads invoices as a CSV file for accounting tools. Accepts the same filters
+as `GET /invoices` (without pagination) and the same authentication; every
+matching invoice is exported, newest first. Rows are streamed from the database
+cursor, so large exports do not load into memory.
+
+#### Query parameters
+
+| Parameter  | Type   | Description                                                                 |
+| ---------- | ------ | --------------------------------------------------------------------------- |
+| `status`   | string | Optional. `Pending`, `Paid`, `Expired`, `Cancelled`, `RefundRequested`, `Released` |
+| `merchant` | string | Optional. Merchant Stellar address                                          |
+
+**Response `200`** — `Content-Type: text/csv; charset=utf-8`,
+`Content-Disposition: attachment; filename="invoices-2026-09-25.csv"`
+(`invoices-<status>-<date>.csv` when filtered by status).
+
+```csv
+invoice_id,merchant_address,token,amount_raw,amount,status,reference,due_date,created_at,updated_at
+1,GDR7...T5XT,USDC,12500000,1.25 USDC,Paid,"Order ""A"", batch 2",2026-01-01T00:00:00.000Z,2025-12-01T10:00:00.000Z,2025-12-02T10:00:00.000Z
+```
+
+- Fields follow RFC 4180: values containing commas, quotes or line breaks are
+  quoted, and quotes are doubled. Rows end with CRLF.
+- Text beginning with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'` so
+  spreadsheets do not evaluate it as a formula.
+- `amount_raw` is in the token's smallest unit; `amount` is the human-readable
+  value with the token symbol. Tokens default to 7 decimals with the stored
+  token value as symbol; override per token with the `TOKEN_METADATA`
+  environment variable, e.g.
+  `{"C...USDC_CONTRACT":{"symbol":"USDC","decimals":7}}`.
+- Dates are ISO 8601 in UTC.
+
+#### Errors
+
+| Status | Description                                                                 |
+| ------ | --------------------------------------------------------------------------- |
+| `500`  | Database error before streaming started (JSON body). Errors after streaming started abort the download |
 
 ---
 
@@ -517,11 +563,122 @@ Update the invoice grace window.
 
 ---
 
+## Compliance
+
+### `GET /compliance/audit`
+
+Returns the paginated, consolidated audit trail emitted by the compliance contract.
+The service indexes `address_allowed`, `address_allowed_until`, `address_blocked`, and
+`address_cleared` events in MongoDB.
+
+#### Query parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `address` | string | No | Stellar public key filter |
+| `event_type` | string | No | One of the four compliance event types |
+| `from_ledger` | integer | No | Inclusive lower ledger bound |
+| `to_ledger` | integer | No | Inclusive upper ledger bound |
+| `page` | integer | No | 1-based page, default `1` |
+| `limit` | integer | No | Page size, default `20`, maximum `100` |
+
+**Response `200`**
+
+```json
+{
+  "events": [
+    {
+      "event_id": "paging-token",
+      "event_type": "address_cleared",
+      "address": "G...",
+      "expires_at": null,
+      "ledger": 123,
+      "ledger_closed_at": "2026-08-27T12:00:00.000Z",
+      "transaction_hash": "abc123...",
+      "contract_id": "C...",
+      "paging_token": "paging-token",
+      "created_at": "2026-08-27T12:00:01.000Z"
+    }
+  ],
+  "page": 1,
+  "limit": 20,
+  "total": 1,
+  "has_more": false
+}
+```
+
+#### Errors
+
+| Status | Description |
+| --- | --- |
+| `400` | Invalid query parameter |
+| `503` | MongoDB unavailable |
+| `500` | Unexpected server error |
+
+---
+
+## Analytics
+
+### `GET /api/analytics/metrics`
+
+Returns protocol totals for the admin dashboard. With `bucket`, returns a time
+series instead, for charts such as invoices per day or settlement volume per
+week.
+
+#### Query parameters
+
+| Parameter    | Type   | Description                                                              |
+| ------------ | ------ | ------------------------------------------------------------------------ |
+| `start_date` | number | Optional. Unix timestamp (seconds), inclusive                            |
+| `end_date`   | number | Optional. Unix timestamp (seconds), inclusive. Defaults to now           |
+| `bucket`     | string | Optional. `day`, `week` or `month`                                       |
+| `merchant`   | string | Optional. Only count invoices of this merchant (series only)             |
+| `token`      | string | Optional. Only count invoices in this token (series only)                |
+
+**Time zone:** buckets are always computed in **UTC**. Weeks start on Monday
+(ISO 8601) and months on the 1st. `period` is the first day of the bucket in
+`YYYY-MM-DD` form. Without `start_date` the series covers the last 30 days,
+12 weeks or 12 months, depending on `bucket`. A request may span at most 1000
+buckets.
+
+Every bucket in the range is returned, with zeros for periods without
+activity, so charts do not skip dates. `count` is the number of invoices
+created in the bucket; `volume` is the sum of raw amounts (smallest token
+unit) of those invoices that are settled (`Paid` or `Released`).
+
+**Response `200` (with `bucket=day`)**
+
+```json
+{
+  "bucket": "day",
+  "timezone": "UTC",
+  "start_date": 1767225600,
+  "end_date": 1767398400,
+  "series": [
+    { "period": "2026-01-01", "count": 4, "volume": 3000000 },
+    { "period": "2026-01-02", "count": 0, "volume": 0 },
+    { "period": "2026-01-03", "count": 1, "volume": 0 }
+  ]
+}
+```
+
+#### Errors
+
+| Status | Description                                                          |
+| ------ | -------------------------------------------------------------------- |
+| `400`  | Invalid `bucket`, timestamps, `merchant`, or a range over 1000 buckets |
+| `500`  | Unexpected server error                                              |
+
+---
+
 ## Webhooks
 
 COMEBACKHERE signs every outbound webhook POST with HMAC-SHA256 so your endpoint
 can verify payload authenticity before processing it.
 
+> For the full payload reference, retry schedule, idempotency guidance, and
+> language-specific verification examples, see
+> [Webhook Payload Reference](./webhooks.md).
 > **Security note**: this is a security-sensitive feature. Treat your signing
 > secret with the same care as a private key. Rotate it immediately if it is ever
 > exposed.
