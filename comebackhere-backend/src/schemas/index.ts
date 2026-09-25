@@ -95,7 +95,7 @@ export const voteBodySchema = z.object({
     .min(1, "signer_address is required")
     .refine(isValidStellarAddress, "signer_address must be a valid Stellar public key"),
   vote: z.enum(["ResolvedClaimant", "ResolvedCounterparty"], {
-    errorMap: () => ({ message: "vote must be 'ResolvedClaimant' or 'ResolvedCounterparty'" }),
+    message: "vote must be 'ResolvedClaimant' or 'ResolvedCounterparty'",
   }),
   weight: z
     .number({ message: "weight must be a positive integer" })
