@@ -190,6 +190,110 @@ Raise a dispute linked to a settlement, transitioning it to `OnHold`.
 | `503`  | Missing required environment variables                         |
 | `500`  | Unexpected server error                                        |
 
+### `GET /disputes`
+
+List disputes with their current vote tallies, newest first.
+
+#### Query parameters
+
+| Parameter       | Type    | Default | Description                                   |
+| --------------- | ------- | ------- | --------------------------------------------- |
+| `status`        | string  | —       | `Raised` (open) or `Resolved`                 |
+| `settlement_id` | string  | —       | Only disputes for this settlement             |
+| `page`          | integer | `1`     | 1-based page number                           |
+| `limit`         | integer | `20`    | Page size, 1–100                              |
+
+Send `x-admin-key` to include voter identities (see
+[Voter visibility](#voter-visibility)).
+
+**Response `200`**
+
+```json
+{
+  "data": [
+    {
+      "dispute_id": "5-1720000000000",
+      "settlement_id": "5",
+      "claimant_address": "G...",
+      "reason": "Goods not delivered",
+      "status": "Raised",
+      "outcome": null,
+      "claimant_weight": 1,
+      "counterparty_weight": 0,
+      "resolution_weight": 1,
+      "threshold": 2,
+      "vote_count": 1,
+      "created_at": "2026-09-25T10:00:00.000Z",
+      "resolved_at": null
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 1
+}
+```
+
+#### Errors
+
+| Status | Description                                                   |
+| ------ | ------------------------------------------------------------- |
+| `400`  | Invalid query parameter — see `error.details`                 |
+| `401`  | `x-admin-key` supplied but invalid                            |
+
+### `GET /disputes/:id`
+
+Full details for one dispute: the same fields as a list item. For admins it
+also includes `votes`:
+
+```json
+{
+  "dispute_id": "5-1720000000000",
+  "status": "Resolved",
+  "outcome": "ResolvedClaimant",
+  "claimant_weight": 2,
+  "counterparty_weight": 1,
+  "resolution_weight": 3,
+  "threshold": 2,
+  "vote_count": 3,
+  "resolved_at": "2026-09-25T10:05:00.000Z",
+  "votes": [
+    { "signer": "G...", "vote": "ResolvedClaimant", "weight": 1, "voted_at": "2026-09-25T10:01:00.000Z" }
+  ]
+}
+```
+
+#### Errors
+
+| Status | Description                                   |
+| ------ | --------------------------------------------- |
+| `401`  | `x-admin-key` supplied but invalid            |
+| `404`  | No dispute with this ID                       |
+
+### `POST /disputes/:id/vote`
+
+Cast a weighted vote (`ResolvedClaimant` or `ResolvedCounterparty`). The
+dispute resolves as soon as either side's weight reaches the threshold
+(`DISPUTE_VOTE_THRESHOLD`, default `2`).
+
+| Status | Description                                                            |
+| ------ | ---------------------------------------------------------------------- |
+| `400`  | Validation error                                                       |
+| `404`  | No dispute with this ID                                                |
+| `409`  | Signer already voted, or dispute already resolved (`details.outcome`)  |
+
+### Voter visibility
+
+Tallies (`claimant_weight`, `counterparty_weight`, `resolution_weight`,
+`vote_count`, `outcome`) are public. **Who voted which way is visible only to
+admins** (a valid `x-admin-key` header), via the `votes` array.
+
+Signers are the treasury's multi-sig keys. Publishing each key's vote in a
+public API makes it easy to single out and pressure individual signers, and
+clients showing dispute progress only need the tallies. The API hides voter
+identities as a precaution: on-chain votes are still public on the ledger,
+so this is not a confidentiality guarantee.
+
 ---
 
 ## Treasury
