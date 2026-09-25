@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express"
 import { Keypair, Networks, TransactionBuilder, BASE_FEE, Contract, nativeToScVal, SorobanRpc, xdr } from "stellar-sdk"
 import { connectMongo, getInvoicesCollection, type InvoiceRecord, type InvoiceStatus } from "../db/mongo.js"
 import { cacheGet, cacheSet } from "../lib/cache.js"
+import { validateBody, validateParams } from "../middleware/validate.js"
+import { createInvoiceSchema, invoiceIdParamSchema } from "../schemas/index.js"
 
 const router = Router()
 

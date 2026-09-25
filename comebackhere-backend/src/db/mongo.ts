@@ -1,18 +1,5 @@
 import { MongoClient, type Db, type Collection, MongoServerSelectionError } from "mongodb"
 
-export type InvoiceStatus = "Pending" | "Paid" | "Expired" | "Cancelled" | "RefundRequested" | "Released"
-
-export interface InvoiceRecord {
-  invoice_id: string
-  merchant_address: string
-  token: string
-  amount: number
-  due_date: number
-  status: InvoiceStatus
-  created_at: Date
-  updated_at: Date
-}
-
 export interface SettlementRecord {
   id: number
   merchant_address: string
@@ -47,14 +34,15 @@ export type InvoiceStatus =
 export interface InvoiceRecord {
   invoice_id: string
   merchant_address: string
-  payer_address: string | null
+  payer_address?: string | null
   token: string
-  amount: string
+  amount: number | string
+  due_date?: number           // Unix timestamp (seconds)
   status: InvoiceStatus
-  created_at: number | null   // Unix timestamp (seconds)
-  expires_at: number | null   // Unix timestamp (seconds)
-  paid_at: number | null      // Unix timestamp (seconds)
-  tx_hash: string | null
+  created_at: Date | number | null // Date (API-created) or Unix seconds (indexed)
+  expires_at?: number | null  // Unix timestamp (seconds)
+  paid_at?: number | null     // Unix timestamp (seconds)
+  tx_hash?: string | null
   updated_at: Date
 }
 
@@ -146,15 +134,10 @@ export async function connectMongo(): Promise<Db> {
   await invoices.createIndex({ status: 1 })
   await invoices.createIndex({ merchant_address: 1 })
   await invoices.createIndex({ status: 1, merchant_address: 1 })
+  await invoices.createIndex({ created_at: -1 })
 
   const cursors = db.collection<IndexerCursor>("indexer_cursors")
   await cursors.createIndex({ _id: 1 }, { unique: true })
-
-  const invoices = db.collection<InvoiceRecord>("invoices")
-  await invoices.createIndex({ invoice_id: 1 }, { unique: true })
-  await invoices.createIndex({ status: 1 })
-  await invoices.createIndex({ merchant_address: 1 })
-  await invoices.createIndex({ created_at: -1 })
 
   return db
 }
@@ -169,10 +152,6 @@ export function getSettlementsCollection(database: Db): Collection<SettlementRec
 
 export function getCursorsCollection(database: Db): Collection<IndexerCursor> {
   return database.collection<IndexerCursor>("indexer_cursors")
-}
-
-export function getInvoicesCollection(database: Db): Collection<InvoiceRecord> {
-  return database.collection<InvoiceRecord>("invoices")
 }
 
 export async function closeMongo(): Promise<void> {
