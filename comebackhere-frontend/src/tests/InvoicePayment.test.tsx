@@ -143,8 +143,8 @@ describe("InvoicePayment — invoice loaded", () => {
     mockUseInvoice.invoice = mockInvoice
     render(<InvoicePayment />)
     expect(screen.getAllByText("42").length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText("1000")).toBeInTheDocument()
-    expect(screen.getByText("1050")).toBeInTheDocument()
+    expect(screen.getByText("0.0001 USDC")).toBeInTheDocument()
+    expect(screen.getByText("0.000105 USDC")).toBeInTheDocument()
   })
 
   it("shows countdown timer when invoice has expires_at", () => {

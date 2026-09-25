@@ -7,6 +7,7 @@ import { PayConfirmationModal } from "./PayConfirmationModal"
 import { CancelConfirmationModal } from "./CancelConfirmationModal"
 import { TransactionHistory } from "./TransactionHistory"
 import { InvoiceQRCode } from "./InvoiceQRCode"
+import { formatAmount, USDC_DECIMALS } from "../utils/format"
 
 export function InvoicePayment() {
   const { invoice, loading, error, loadInvoice, pay, cancel } = useInvoice()
@@ -186,8 +187,8 @@ export function InvoicePayment() {
 
           <div className="invoice-card__body">
             <div className="detail-row">
-              <span className="detail-label">Amount (USDC)</span>
-              <span className="detail-value">{invoice.amount_usdc}</span>
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(invoice.amount_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Countdown</span>
@@ -202,8 +203,8 @@ export function InvoicePayment() {
               </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Gross Amount (USDC)</span>
-              <span className="detail-value">{invoice.gross_usdc}</span>
+              <span className="detail-label">Gross Amount</span>
+              <span className="detail-value">{formatAmount(invoice.gross_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Merchant</span>

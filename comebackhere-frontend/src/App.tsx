@@ -5,27 +5,19 @@ import { ComplianceManager } from "./components/ComplianceManager"
 import { TokenAllowlist } from "./components/TokenAllowlist"
 import { BatchExpireInvoices } from "./components/BatchExpireInvoices"
 import { TreasuryManager } from "./components/TreasuryManager"
-import { CreateInvoice } from "./components/CreateInvoice"
-import { InvoiceList } from "./components/InvoiceList"
+import SignerManagement from "./components/SignerManagement/SignerManagement"
 import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { useHashTab, TABS, type Tab } from "./hooks/useHashTab"
 import { CopyableText } from "./components/CopyableText"
-import { WalletBar } from "./components/WalletBar"
+import { formatAmount, USDC_DECIMALS } from "./utils/format"
+import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
+import OnboardingWizard, { useOnboarding } from "./components/OnboardingWizard"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
-const TAB_LABELS: Record<Tab, string> = {
-  payment: "Pay Invoice",
-  create: "Create Invoice",
-  invoices: "My Invoices",
-  refund: "Request Refund",
-  compliance: "Compliance",
-  tokens: "Token Allowlist",
-  "batch-expire": "Batch Expire",
-  treasury: "Treasury",
-}
+type Tab = "payment" | "refund" | "compliance" | "tokens" | "batch-expire" | "treasury" | "signers"
 
 function RefundTab() {
   const { invoice, loading, error, loadInvoice, refund } = useInvoice()
@@ -69,8 +61,8 @@ function RefundTab() {
           </div>
           <div className="invoice-card__body">
             <div className="detail-row">
-              <span className="detail-label">Amount (USDC)</span>
-              <span className="detail-value">{invoice.gross_usdc}</span>
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(invoice.gross_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Merchant</span>
@@ -140,7 +132,8 @@ function renderTab(tab: Tab, { address, notReadyReason, setTab, openInvoice }: T
 }
 
 export default function App() {
-  const { wallet, address, notReadyReason, connect, retryConnect, disconnect } = useWallet()
+  const { address, network, connected, connect, connecting, disconnect, error: walletError } = useWallet()
+  const { showWizard, openWizard, closeWizard } = useOnboarding()
   useTheme()
   const [tab, setTab] = useHashTab()
 
@@ -162,38 +155,148 @@ export default function App() {
     <div className="app">
       <header className="app-header" role="banner">
         <h1>ComebackHere</h1>
-        <WalletBar
-          wallet={wallet}
-          onConnect={() => void connect()}
-          onRetry={() => void retryConnect()}
-          onDisconnect={handleDisconnect}
-        />
+        <div className="wallet-bar">
+          <button
+            className="btn btn--secondary btn--sm"
+            onClick={openWizard}
+            aria-label="Open setup guide"
+          >
+            Setup guide
+          </button>
+          {connected ? (
+            <>
+              <span className="wallet-address" aria-label={`Wallet connected: ${address}`}>
+                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+              </span>
+              <button
+                className="btn btn--secondary btn--sm"
+                onClick={handleDisconnect}
+                aria-label="Disconnect wallet"
+              >
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn--primary btn--sm"
+              onClick={connect}
+              disabled={connecting}
+              aria-label="Connect wallet"
+            >
+              {connecting ? "Connecting..." : "Connect Wallet"}
+            </button>
+          )}
+        </div>
       </header>
 
+      <NetworkMismatchBanner
+        walletPassphrase={network}
+        connected={connected}
+        connecting={connecting}
+      />
+
       <nav className="tabs" role="tablist" aria-label="Main navigation">
-        {TABS.map((id) => (
+        <button
+          role="tab"
+          aria-selected={tab === "payment"}
+          aria-controls="tabpanel-payment"
+          id="tab-payment"
+          className={`tab ${tab === "payment" ? "tab--active" : ""}`}
+          onClick={() => setTab("payment")}
+        >
+          Pay Invoice
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "refund"}
+          aria-controls="tabpanel-refund"
+          id="tab-refund"
+          className={`tab ${tab === "refund" ? "tab--active" : ""}`}
+          onClick={() => setTab("refund")}
+        >
+          Request Refund
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "compliance"}
+          aria-controls="tabpanel-compliance"
+          id="tab-compliance"
+          className={`tab ${tab === "compliance" ? "tab--active" : ""}`}
+          onClick={() => setTab("compliance")}
+        >
+          Compliance
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "tokens"}
+          aria-controls="tabpanel-tokens"
+          id="tab-tokens"
+          className={`tab ${tab === "tokens" ? "tab--active" : ""}`}
+          onClick={() => setTab("tokens")}
+        >
+          Token Allowlist
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "batch-expire"}
+          aria-controls="tabpanel-batch-expire"
+          id="tab-batch-expire"
+          className={`tab ${tab === "batch-expire" ? "tab--active" : ""}`}
+          onClick={() => setTab("batch-expire")}
+        >
+          Batch Expire
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "treasury"}
+          aria-controls="tabpanel-treasury"
+          id="tab-treasury"
+          className={`tab ${tab === "treasury" ? "tab--active" : ""}`}
+          onClick={() => setTab("treasury")}
+        >
+          Treasury
+        </button>
+        {connected && (
           <button
-            key={id}
             role="tab"
-            aria-selected={tab === id}
-            aria-controls={`tabpanel-${id}`}
-            id={`tab-${id}`}
-            className={`tab ${tab === id ? "tab--active" : ""}`}
-            onClick={() => setTab(id)}
+            aria-selected={tab === "signers"}
+            aria-controls="tabpanel-signers"
+            id="tab-signers"
+            className={`tab ${tab === "signers" ? "tab--active" : ""}`}
+            onClick={() => setTab("signers")}
           >
-            {TAB_LABELS[id]}
+            Signers
           </button>
-        ))}
+        )}
       </nav>
 
-      <main
-        className="app-main"
-        role="tabpanel"
-        id={`tabpanel-${tab}`}
-        aria-labelledby={`tab-${tab}`}
-      >
-        {renderTab(tab, { address, notReadyReason, setTab, openInvoice })}
+      <main className="app-main">
+        {tab === "payment" ? (
+          <InvoicePayment />
+        ) : tab === "refund" ? (
+          <RefundTab />
+        ) : tab === "tokens" ? (
+          <TokenAllowlist />
+        ) : tab === "compliance" ? (
+          <ComplianceManager />
+        ) : tab === "batch-expire" ? (
+          <BatchExpireInvoices walletAddress={address} />
+        ) : tab === "treasury" ? (
+          <TreasuryManager />
+        ) : tab === "signers" && connected ? (
+          <SignerManagement />
+        ) : null}
       </main>
+
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={closeWizard}
+          onDismiss={closeWizard}
+          walletAddress={address}
+          walletError={walletError}
+          onConnectWallet={connect}
+        />
+      )}
     </div>
   )
 }

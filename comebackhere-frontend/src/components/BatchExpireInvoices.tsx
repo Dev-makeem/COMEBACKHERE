@@ -3,6 +3,7 @@ import { StatusBadge } from "./StatusBadge"
 import { fetchInvoice, batchExpireInvoices } from "../utils/soroban"
 import type { Invoice } from "../types"
 import { InvoiceStatus } from "../types"
+import { formatAmount, USDC_DECIMALS } from "../utils/format"
 
 const CONTRACT_ID = import.meta.env.VITE_INVOICE_CONTRACT_ID as string
 
@@ -384,7 +385,7 @@ export function BatchExpireInvoices({ walletAddress, walletNotReadyReason = null
                       </td>
                       <td>#{inv.id}</td>
                       <td className="address-cell">{inv.merchant}</td>
-                      <td>{inv.amount_usdc}</td>
+                      <td>{formatAmount(inv.amount_usdc, USDC_DECIMALS)}</td>
                       <td>{new Date(inv.expires_at * 1000).toLocaleString()}</td>
                       <td>
                         <StatusBadge status={inv.status} />
