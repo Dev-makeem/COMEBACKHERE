@@ -157,6 +157,11 @@ export const analyticsQuerySchema = z
       .optional()
       .transform((val) => (val ? parseInt(val, 10) : undefined))
       .pipe(z.number().finite("Invalid end_date timestamp").optional()),
+    bucket: z
+      .enum(["day", "week", "month"], { message: "bucket must be one of: day, week, month" })
+      .optional(),
+    merchant: stellarAddress.optional(),
+    token: z.string().min(1).optional(),
   })
   .refine(
     (data) => {

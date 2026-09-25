@@ -16,6 +16,7 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js"
 import { createCorsMiddleware } from "./middleware/cors.js"
 import { parseCorsOrigins } from "./lib/env.js"
 import { openapiSpec } from "./openapi.js"
+import { renderMetrics } from "./lib/metrics.js"
 
 /** Maximum accepted JSON body size; larger requests get a 413 envelope. */
 export const JSON_BODY_LIMIT = "100kb"
@@ -78,6 +79,11 @@ export function createApp(options: CreateAppOptions = {}) {
 
   // ── Health ──────────────────────────────────────────────────────────────────
   app.get("/health", (_req, res) => res.json({ status: "ok" }))
+
+  // ── Prometheus metrics ──────────────────────────────────────────────────────
+  app.get("/metrics", (_req, res) => {
+    res.type("text/plain; version=0.0.4").send(renderMetrics())
+  })
 
   // ── OpenAPI spec (Issue #218) ───────────────────────────────────────────────
   // Raw JSON spec at a stable, machine-readable URL

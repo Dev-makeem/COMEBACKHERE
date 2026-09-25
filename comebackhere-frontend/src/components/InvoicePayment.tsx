@@ -7,10 +7,11 @@ import { PayConfirmationModal } from "./PayConfirmationModal"
 import { CancelConfirmationModal } from "./CancelConfirmationModal"
 import { TransactionHistory } from "./TransactionHistory"
 import { InvoiceQRCode } from "./InvoiceQRCode"
+import { formatAmount, USDC_DECIMALS } from "../utils/format"
 
 export function InvoicePayment() {
   const { invoice, loading, error, loadInvoice, pay, cancel } = useInvoice()
-  const { address, connected, connecting, connect } = useWallet()
+  const { address, connected, connecting, connect, notReadyReason } = useWallet()
   const [invoiceId, setInvoiceId] = useState("")
   const [showConfirm, setShowConfirm] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -186,8 +187,8 @@ export function InvoicePayment() {
 
           <div className="invoice-card__body">
             <div className="detail-row">
-              <span className="detail-label">Amount (USDC)</span>
-              <span className="detail-value">{invoice.amount_usdc}</span>
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(invoice.amount_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Countdown</span>
@@ -202,8 +203,8 @@ export function InvoicePayment() {
               </span>
             </div>
             <div className="detail-row">
-              <span className="detail-label">Gross Amount (USDC)</span>
-              <span className="detail-value">{invoice.gross_usdc}</span>
+              <span className="detail-label">Gross Amount</span>
+              <span className="detail-value">{formatAmount(invoice.gross_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Merchant</span>
@@ -236,15 +237,32 @@ export function InvoicePayment() {
             )}
 
             {connected && canPay && (
-              <button className="btn btn--primary" onClick={handlePayClick} aria-label={`Pay invoice #${invoice.id}`}>
+              <button
+                className="btn btn--primary"
+                onClick={handlePayClick}
+                disabled={!!notReadyReason}
+                aria-describedby={notReadyReason ? "payment-wallet-reason" : undefined}
+                aria-label={`Pay invoice #${invoice.id}`}
+              >
                 Pay Invoice
               </button>
             )}
 
             {canCancel && (
-              <button className="btn btn--danger" onClick={handleCancelClick}>
+              <button
+                className="btn btn--danger"
+                onClick={handleCancelClick}
+                disabled={!!notReadyReason}
+                aria-describedby={notReadyReason ? "payment-wallet-reason" : undefined}
+              >
                 Cancel Invoice
               </button>
+            )}
+
+            {notReadyReason && (
+              <p id="payment-wallet-reason" className="wallet-required" data-testid="wallet-not-ready">
+                {notReadyReason}
+              </p>
             )}
 
             {connected && invoice.status !== "Pending" && !hasOpenDispute && (
