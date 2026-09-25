@@ -79,7 +79,7 @@ router.get("/audit", validateQuery(complianceAuditQuerySchema), async (req: Requ
 // ---------------------------------------------------------------------------
 
 export type SorobanClient = {
-  getAccount: (publicKey: string) => Promise<Parameters<TransactionBuilder["constructor"]>[0]>
+  getAccount: (publicKey: string) => Promise<ConstructorParameters<typeof TransactionBuilder>[0]>
   simulateTransaction: (tx: Parameters<SorobanRpc.Server["simulateTransaction"]>[0]) => ReturnType<SorobanRpc.Server["simulateTransaction"]>
   sendTransaction: (tx: Parameters<SorobanRpc.Server["sendTransaction"]>[0]) => ReturnType<SorobanRpc.Server["sendTransaction"]>
   getTransaction: (hash: string) => ReturnType<SorobanRpc.Server["getTransaction"]>

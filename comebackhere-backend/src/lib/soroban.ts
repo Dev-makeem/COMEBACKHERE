@@ -11,7 +11,7 @@ import {
 } from "stellar-sdk"
 
 export type SorobanClient = {
-  getAccount: (publicKey: string) => Promise<Parameters<TransactionBuilder["constructor"]>[0]>
+  getAccount: (publicKey: string) => Promise<ConstructorParameters<typeof TransactionBuilder>[0]>
   simulateTransaction: (
     tx: Parameters<SorobanRpc.Server["simulateTransaction"]>[0],
   ) => ReturnType<SorobanRpc.Server["simulateTransaction"]>
