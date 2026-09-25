@@ -12,6 +12,7 @@ import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { useHashTab, TABS, type Tab } from "./hooks/useHashTab"
 import { CopyableText } from "./components/CopyableText"
+import { WalletBar } from "./components/WalletBar"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
@@ -28,7 +29,7 @@ const TAB_LABELS: Record<Tab, string> = {
 
 function RefundTab() {
   const { invoice, loading, error, loadInvoice, refund } = useInvoice()
-  const { address } = useWallet()
+  const { address, notReadyReason } = useWallet()
   const [invoiceId, setInvoiceId] = useState("")
 
   const handleLoadInvoice = async () => {
@@ -91,6 +92,7 @@ function RefundTab() {
           <RefundRequest
             invoice={invoice}
             walletAddress={address}
+            walletNotReadyReason={notReadyReason}
             onRequestRefund={() => refund(address ?? "")}
           />
         </div>
@@ -101,11 +103,12 @@ function RefundTab() {
 
 interface TabContext {
   address: string | null
+  notReadyReason: string | null
   setTab: (tab: Tab) => void
   openInvoice: (invoiceId: string) => void
 }
 
-function renderTab(tab: Tab, { address, setTab, openInvoice }: TabContext) {
+function renderTab(tab: Tab, { address, notReadyReason, setTab, openInvoice }: TabContext) {
   switch (tab) {
     case "payment":
       return <InvoicePayment />
@@ -126,7 +129,7 @@ function renderTab(tab: Tab, { address, setTab, openInvoice }: TabContext) {
     case "compliance":
       return <ComplianceManager />
     case "batch-expire":
-      return <BatchExpireInvoices walletAddress={address} />
+      return <BatchExpireInvoices walletAddress={address} walletNotReadyReason={notReadyReason} />
     case "treasury":
       return <TreasuryManager />
     default: {
@@ -137,7 +140,7 @@ function renderTab(tab: Tab, { address, setTab, openInvoice }: TabContext) {
 }
 
 export default function App() {
-  const { address, connected, connect, connecting, disconnect } = useWallet()
+  const { wallet, address, notReadyReason, connect, retryConnect, disconnect } = useWallet()
   useTheme()
   const [tab, setTab] = useHashTab()
 
@@ -159,31 +162,12 @@ export default function App() {
     <div className="app">
       <header className="app-header" role="banner">
         <h1>ComebackHere</h1>
-        <div className="wallet-bar">
-          {connected ? (
-            <>
-              <span className="wallet-address" aria-label={`Wallet connected: ${address}`}>
-                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
-              </span>
-              <button
-                className="btn btn--secondary btn--sm"
-                onClick={handleDisconnect}
-                aria-label="Disconnect wallet"
-              >
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <button
-              className="btn btn--primary btn--sm"
-              onClick={connect}
-              disabled={connecting}
-              aria-label="Connect wallet"
-            >
-              {connecting ? "Connecting..." : "Connect Wallet"}
-            </button>
-          )}
-        </div>
+        <WalletBar
+          wallet={wallet}
+          onConnect={() => void connect()}
+          onRetry={() => void retryConnect()}
+          onDisconnect={handleDisconnect}
+        />
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Main navigation">
@@ -208,7 +192,7 @@ export default function App() {
         id={`tabpanel-${tab}`}
         aria-labelledby={`tab-${tab}`}
       >
-        {renderTab(tab, { address, setTab, openInvoice })}
+        {renderTab(tab, { address, notReadyReason, setTab, openInvoice })}
       </main>
     </div>
   )
