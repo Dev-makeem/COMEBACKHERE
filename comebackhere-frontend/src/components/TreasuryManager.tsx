@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { useWallet } from "../hooks/useWallet"
 import { usePolling } from "../hooks/usePolling"
 import { fetchBalances, type TreasuryBalance } from "../utils/treasury"
+import { formatAmount, STELLAR_DECIMALS } from "../utils/format"
 import "./TreasuryManager.css"
 
 const TREASURY_CONTRACT = import.meta.env.VITE_TREASURY_CONTRACT_ID as string
@@ -379,7 +380,7 @@ export function TreasuryManager() {
               balances.map((b) => (
                 <tr key={b.token}>
                   <td>{b.token}</td>
-                  <td>{(Number(b.balance) / 10_000_000).toFixed(7)}</td>
+                  <td>{formatAmount(b.balance, STELLAR_DECIMALS, b.token)}</td>
                 </tr>
               ))
             )}

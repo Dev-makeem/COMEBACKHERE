@@ -9,6 +9,7 @@ import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { CopyableText } from "./components/CopyableText"
+import { formatAmount, USDC_DECIMALS } from "./utils/format"
 import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
 import OnboardingWizard, { useOnboarding } from "./components/OnboardingWizard"
 import "./App.css"
@@ -58,8 +59,8 @@ function RefundTab() {
           </div>
           <div className="invoice-card__body">
             <div className="detail-row">
-              <span className="detail-label">Amount (USDC)</span>
-              <span className="detail-value">{invoice.gross_usdc}</span>
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(invoice.gross_usdc, USDC_DECIMALS, "USDC")}</span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Merchant</span>
