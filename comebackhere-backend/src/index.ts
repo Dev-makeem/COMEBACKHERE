@@ -13,7 +13,16 @@ import { stopIndexer } from "./indexer.js"
 import { closeMongo } from "./db/mongo.js"
 import { webhookDeliveryQueue } from "./services/webhook-delivery.js"
 import { createShutdownHandler, resolveWebhookDrainTimeout } from "./shutdown.js"
+import { validateEnv } from "./lib/env.js"
 import type { Server } from "http"
+
+// Fail fast on missing variables or malformed Stellar ids, naming the variable.
+try {
+  validateEnv(process.env)
+} catch (err) {
+  console.error(`[startup] ${err instanceof Error ? err.message : err}`)
+  process.exit(1)
+}
 
 const PORT = process.env.PORT ?? "3000"
 /** Hard shutdown timeout in ms — forces exit if clean shutdown hangs. */
