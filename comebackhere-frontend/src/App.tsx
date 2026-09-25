@@ -9,6 +9,7 @@ import { useInvoice } from "./hooks/useInvoice"
 import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { CopyableText } from "./components/CopyableText"
+import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
@@ -88,7 +89,7 @@ function RefundTab() {
 }
 
 export default function App() {
-  const { address, connected, connect, connecting, disconnect } = useWallet()
+  const { address, network, connected, connect, connecting, disconnect } = useWallet()
   useTheme()
   const [tab, setTab] = useState<Tab>("payment")
 
@@ -127,6 +128,12 @@ export default function App() {
           )}
         </div>
       </header>
+
+      <NetworkMismatchBanner
+        walletPassphrase={network}
+        connected={connected}
+        connecting={connecting}
+      />
 
       <nav className="tabs" role="tablist" aria-label="Main navigation">
         <button
