@@ -1,4 +1,5 @@
 import express from "express"
+import helmet from "helmet"
 import swaggerUi from "swagger-ui-express"
 import invoicesRouter from "./routes/invoices.js"
 import complianceRouter from "./routes/compliance.js"
@@ -14,13 +15,54 @@ import { correlationIdMiddleware } from "./middleware/correlationId.js"
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js"
 import { openapiSpec } from "./openapi.js"
 
+/** Maximum accepted JSON body size; larger requests get a 413 envelope. */
+export const JSON_BODY_LIMIT = "100kb"
+
+// This is a JSON API, so by default nothing may be loaded, framed or executed.
+const apiHelmet = helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'none'"],
+      formAction: ["'none'"],
+    },
+  },
+})
+
+// Swagger UI serves its JS/CSS from same-origin files but also uses inline
+// <style> blocks and data: images, and "Try it out" calls back into the API.
+const swaggerHelmet = helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+})
+
 export function createApp() {
   const app = express()
+  app.disable("x-powered-by")
   // Attach / propagate X-Request-Id before any other middleware so every log
   // line, downstream call and error envelope can reference the same
   // correlation ID — including body-parsing errors.
   app.use(correlationIdMiddleware)
-  app.use(express.json())
+  app.use((req, res, next) =>
+    req.path === "/api-docs" || req.path.startsWith("/api-docs/")
+      ? swaggerHelmet(req, res, next)
+      : apiHelmet(req, res, next),
+  )
+  app.use(express.json({ limit: JSON_BODY_LIMIT }))
   app.use(rateLimitMiddleware)
 
   // ── Health ──────────────────────────────────────────────────────────────────

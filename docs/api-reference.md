@@ -2,8 +2,16 @@
 
 Base URL: `http://localhost:3000` (local) or your deployed backend.
 
-All request bodies are JSON (`Content-Type: application/json`).
+All request bodies are JSON (`Content-Type: application/json`) and are limited
+to **100 kB**; larger bodies are rejected with `413 PAYLOAD_TOO_LARGE`.
 All responses are JSON.
+
+Every response carries a baseline of security headers (via
+[helmet](https://helmetjs.github.io/)), including `Strict-Transport-Security`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a strict
+`Content-Security-Policy: default-src 'none'`. Swagger UI under `/api-docs`
+gets a relaxed CSP that allows its same-origin scripts, inline styles and
+`data:` images.
 
 > **Machine-readable spec:** A Swagger/OpenAPI 3.0 spec is served at
 > [`GET /api-docs/swagger.json`](http://localhost:3000/api-docs/swagger.json) (raw JSON)
@@ -686,6 +694,7 @@ header and `correlationId`. Otherwise the server generates a UUID v4.
 | 403  | `FORBIDDEN`             | Caller lacks permission                                          | `null`                                 |
 | 404  | `NOT_FOUND`             | Resource or route does not exist                                 | `null`                                 |
 | 409  | `CONFLICT`              | Request conflicts with current state (e.g. dispute already resolved) | Endpoint-specific, e.g. `{ outcome }` |
+| 413  | `PAYLOAD_TOO_LARGE`     | JSON body exceeds 100 kB                                         | `{ limitBytes }`                       |
 | 4xx/5xx | `CONTRACT_ERROR`     | A Soroban contract returned `Error(Contract, #N)`                | `{ contractCode: N }` — see [error-codes.md](./error-codes.md) |
 | 422  | `UNPROCESSABLE_ENTITY`  | Soroban simulation / submission failed without a contract code   | `null`                                 |
 | 429  | `RATE_LIMITED`          | Per-IP rate limit exceeded                                       | `{ retryAfter }` (seconds)             |

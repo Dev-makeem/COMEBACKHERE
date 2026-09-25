@@ -1,5 +1,11 @@
 import type { NextFunction, Request, Response } from "express"
-import { AppError, ContractError, NotFoundError, parseContractErrorCode } from "../lib/errors.js"
+import {
+  AppError,
+  ContractError,
+  NotFoundError,
+  PayloadTooLargeError,
+  parseContractErrorCode,
+} from "../lib/errors.js"
 
 /**
  * Standard error envelope returned by every route:
@@ -40,11 +46,14 @@ const CODE_BY_STATUS: Record<number, string> = {
 export function toAppError(err: unknown): AppError {
   if (err instanceof AppError) return err
 
-  const e = (err ?? {}) as { status?: unknown; statusCode?: unknown; type?: unknown; message?: unknown }
+  const e = (err ?? {}) as { status?: unknown; statusCode?: unknown; type?: unknown; message?: unknown; limit?: unknown }
   const rawStatus = typeof e.status === "number" ? e.status : typeof e.statusCode === "number" ? e.statusCode : 500
   const status = rawStatus >= 400 && rawStatus <= 599 ? rawStatus : 500
   const message = err instanceof Error ? err.message : typeof e.message === "string" ? e.message : String(err)
 
+  if (e.type === "entity.too.large") {
+    return new PayloadTooLargeError(undefined, typeof e.limit === "number" ? { limitBytes: e.limit } : null)
+  }
   if (e.type === "entity.parse.failed") {
     return new AppError(400, "INVALID_JSON", "Request body is not valid JSON")
   }
