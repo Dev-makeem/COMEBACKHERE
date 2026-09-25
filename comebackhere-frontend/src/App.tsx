@@ -10,6 +10,7 @@ import { useTheme } from "./hooks/useTheme"
 import { useWallet } from "./hooks/useWallet"
 import { CopyableText } from "./components/CopyableText"
 import NetworkMismatchBanner from "./components/NetworkMismatchBanner"
+import OnboardingWizard, { useOnboarding } from "./components/OnboardingWizard"
 import "./App.css"
 import "./components/ErrorBoundary.css"
 
@@ -89,7 +90,8 @@ function RefundTab() {
 }
 
 export default function App() {
-  const { address, network, connected, connect, connecting, disconnect } = useWallet()
+  const { address, network, connected, connect, connecting, disconnect, error: walletError } = useWallet()
+  const { showWizard, openWizard, closeWizard } = useOnboarding()
   useTheme()
   const [tab, setTab] = useState<Tab>("payment")
 
@@ -103,6 +105,13 @@ export default function App() {
       <header className="app-header" role="banner">
         <h1>ComebackHere</h1>
         <div className="wallet-bar">
+          <button
+            className="btn btn--secondary btn--sm"
+            onClick={openWizard}
+            aria-label="Open setup guide"
+          >
+            Setup guide
+          </button>
           {connected ? (
             <>
               <span className="wallet-address" aria-label={`Wallet connected: ${address}`}>
@@ -213,6 +222,16 @@ export default function App() {
           <TreasuryManager />
         ) : null}
       </main>
+
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={closeWizard}
+          onDismiss={closeWizard}
+          walletAddress={address}
+          walletError={walletError}
+          onConnectWallet={connect}
+        />
+      )}
     </div>
   )
 }
