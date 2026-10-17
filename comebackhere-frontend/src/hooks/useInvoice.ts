@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react"
 import { InvoiceStatus, type Invoice, type PaymentResult } from "../types"
 import { fetchInvoice, payInvoice, cancelInvoice, requestRefund, releaseEscrow } from "../utils/soroban"
+import { friendlyWalletError } from "../utils/walletErrors"
 
 const CONTRACT_ID = import.meta.env.VITE_INVOICE_CONTRACT_ID as string
 
@@ -38,7 +39,7 @@ export function useInvoice(): UseInvoiceReturn {
       if (!invoice) {
         return { success: false, error: "No invoice loaded" }
       }
-      const result = await payInvoice(CONTRACT_ID, Number(invoice.id), publicKey)
+      const result = friendlyWalletError(await payInvoice(CONTRACT_ID, Number(invoice.id), publicKey))
       if (result.success) {
         await loadInvoice(Number(invoice.id))
       }
