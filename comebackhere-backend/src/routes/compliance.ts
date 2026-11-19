@@ -58,6 +58,10 @@ router.get("/audit", validateQuery(complianceAuditQuerySchema), asyncHandler(asy
   }
   const filter = buildAuditFilter(query)
   const skip = (query.page - 1) * query.limit
+  if (exceedsAuditSkip(skip)) {
+    res.status(400).json({ error: "Page is too deep; narrow the query with from_ledger/to_ledger" })
+    return
+  }
   const collection = getComplianceAuditCollection(await connectMongo())
   const [events, total] = await Promise.all([
     collection.find(filter).sort({ ledger: -1, _id: -1 }).skip(skip).limit(query.limit).toArray(),
